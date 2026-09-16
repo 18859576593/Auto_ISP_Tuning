@@ -1,64 +1,593 @@
 {
  "platform": "txw828",
- "note": "参数已映射到真实调参协议命令（cmd/arg_idx 字段，命令数值见 cmd_table.json，协议见 docs/txw_tuning_protocol.md）。范围(lo/hi)为暂定值，上板联调时按工具实际范围修正。",
+ "note": "由 tools/gen_txw_schema.py 从 SDK(hal/isp.c + isp_tunning.c + isp_param*.h/c)自动生成; 手工条目按 (cmd,arg_idx) 优先保留。重生成: python tools/gen_txw_schema.py",
  "table_params": [
+  {
+   "key": "ae.crop",
+   "cmd": "ISP_IOCTL_CMD_AE_CROP_RANGE",
+   "words": null,
+   "desc": "AE 测光窗口(start_h/v + size_h/v)"
+  },
+  {
+   "key": "ae.lowlight",
+   "cmd": "ISP_IOCTL_CMD_AE_LOWLIGHT_PARAM",
+   "words": null,
+   "desc": "AE 低照参数结构体"
+  },
+  {
+   "key": "ae.scene_lut",
+   "cmd": "ISP_IOCTL_CMD_AE_SCENE_LUT",
+   "words": null,
+   "desc": "AE 场景查找表"
+  },
+  {
+   "key": "awb.coarse_polygon",
+   "cmd": "ISP_IOCTL_CMD_AWB_GAIN_COARSE_CONSTRAINT",
+   "words": null,
+   "desc": "AWB 粗约束多边形(coarse_min/lb/rt/max_bg/rg)"
+  },
+  {
+   "key": "awb.gain_limit",
+   "cmd": "ISP_IOCTL_CMD_AWB_GAIN_CONSTRAINT",
+   "words": null,
+   "desc": "AWB 增益上下限+粗精约束结构体(default/min/max 各4通道)"
+  },
+  {
+   "key": "awb.fine_polygon",
+   "cmd": "ISP_IOCTL_CMD_AWB_GAIN_FINE_CONSTRAINT",
+   "words": null,
+   "desc": "AWB 细约束多边形(8 段色温线斜率/截距/角点)"
+  },
+  {
+   "key": "awb.wp_restrain",
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_RANGE_CONSTRAINT_RESTRAIN",
+   "words": null,
+   "desc": "AWB 白点 restrain 结构体"
+  },
   {
    "key": "blc.param",
    "cmd": "ISP_IOCTL_CMD_BLC_PARAM",
+   "words": null,
    "desc": "BLC 四通道黑电平(标定: 遮黑盖+GET_SENSOR_RAW)"
   },
   {
-   "key": "lsc.table",
-   "cmd": "ISP_IOCTL_CMD_LSC_TUNNING",
-   "desc": "LSC 4通道×153点增益表(标定: 6500K灯箱+均光片)"
-  },
-  {
-   "key": "ccm.array",
+   "key": "ccm.matrix",
    "cmd": "ISP_IOCTL_CMD_CCM_ARRAY",
-   "desc": "3x3 CCM×256归一(标定: D50+24色卡+Imatest)"
+   "words": null,
+   "desc": "3x3 CCM 矩阵(标定: 24色卡拍摄)"
   },
   {
-   "key": "gamma.y",
-   "cmd": "ISP_IOCTL_CMD_Y_GAMMA_TUNNING",
-   "desc": "Y Gamma 曲线表"
+   "key": "ce.adj_by_bv",
+   "cmd": "ISP_IOCTL_CMD_CE_ADJ_BY_BV_PARAM",
+   "words": null,
+   "desc": "CE 按 BV 分档参数表(8 档)"
   },
   {
-   "key": "gamma.rgb",
-   "cmd": "ISP_IOCTL_CMD_RGB_GAMMA_TUNNING",
-   "desc": "RGB Gamma 曲线表"
+   "key": "ce.offset",
+   "cmd": "ISP_IOCTL_CMD_CE_OFFSET_PARAM",
+   "words": null,
+   "desc": "CE 色偏修正结构体"
+  },
+  {
+   "key": "csc.param",
+   "cmd": "ISP_IOCTL_CMD_CSC_PARAM",
+   "words": null,
+   "desc": "CSC 色彩空间转换矩阵"
+  },
+  {
+   "key": "nr.csupp_map",
+   "cmd": "ISP_IOCTL_CMD_CSUPP_MAP",
+   "words": null,
+   "desc": "BV 分档色度抑制表(3 档)"
+  },
+  {
+   "key": "dpc.param",
+   "cmd": "ISP_IOCTL_CMD_DPC_PARAM",
+   "words": null,
+   "desc": "DPC 坏点检测强度结构体"
   },
   {
    "key": "gamma.by_bv",
    "cmd": "ISP_IOCTL_CMD_GAMMA_BY_BV_PARAM",
-   "desc": "按BV分档的 Gamma(夜景自适应)"
+   "words": null,
+   "desc": "BV 分档伽马表(8 档)"
   },
   {
-   "key": "nr.yuvnr_map",
-   "cmd": "ISP_IOCTL_CMD_YUVNR_MAP",
-   "desc": "YUV域降噪 BV→强度映射表(按增益分档降噪的主体)"
+   "key": "gic.param",
+   "cmd": "ISP_IOCTL_CMD_GIC_PARAM",
+   "words": null,
+   "desc": "GIC 参数结构体(w_thres/w_slope/w_str/mu_*)"
   },
   {
-   "key": "nr.rawnr_map",
-   "cmd": "ISP_IOCTL_CMD_RAWNR_MAP",
-   "desc": "RAW域降噪映射表"
-  },
-  {
-   "key": "sharp.param",
-   "cmd": "ISP_IOCTL_CMD_SHARP_PARAM",
-   "desc": "锐化参数结构体"
+   "key": "ae.hist_crop",
+   "cmd": "ISP_IOCTL_CMD_HIST_CROP_RANGE",
+   "words": null,
+   "desc": "直方图统计窗口(start_h/v + end_h/v)"
   },
   {
    "key": "lhs.map",
    "cmd": "ISP_IOCTL_CMD_LHS_MAP",
-   "desc": "局部色相/饱和度分区表"
+   "words": null,
+   "desc": "局部色相/饱和 9 区映射"
   },
   {
-   "key": "csupp.map",
-   "cmd": "ISP_IOCTL_CMD_CSUPP_MAP",
-   "desc": "串色抑制映射表"
+   "key": "lsc.tbl",
+   "cmd": "ISP_IOCTL_CMD_LSC_TUNNING",
+   "words": null,
+   "desc": "LSC 阴影校正表(标定: 均匀光源)"
+  },
+  {
+   "key": "nr.rawnr_map",
+   "cmd": "ISP_IOCTL_CMD_RAWNR_MAP",
+   "words": null,
+   "desc": "BV 分档 RAW 域降噪强度表(11 档)"
+  },
+  {
+   "key": "gamma.rgb_curve",
+   "cmd": "ISP_IOCTL_CMD_RGB_GAMMA_TUNNING",
+   "words": null,
+   "desc": "RGB Gamma 曲线"
+  },
+  {
+   "key": "sharp.param",
+   "cmd": "ISP_IOCTL_CMD_SHARP_PARAM",
+   "words": null,
+   "desc": "锐化参数结构体"
+  },
+  {
+   "key": "wdr.tunning",
+   "cmd": "ISP_IOCTL_CMD_WDR_TUNNING",
+   "words": null,
+   "desc": "WDR 调参结构体"
+  },
+  {
+   "key": "nr.yuvnr_map",
+   "cmd": "ISP_IOCTL_CMD_YUVNR_MAP",
+   "words": null,
+   "desc": "BV 分档 YUV 降噪强度表(6 档)"
+  },
+  {
+   "key": "gamma.y_curve",
+   "cmd": "ISP_IOCTL_CMD_Y_GAMMA_TUNNING",
+   "words": null,
+   "desc": "Y Gamma 曲线(64 点)"
   }
  ],
  "params": [
+  {
+   "key": "ae.abl_bv_thr_low",
+   "ptype": "float",
+   "lo": 0.0,
+   "hi": 1000000000.0,
+   "default": 0.0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_BV_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·abl_bv_thr_low"
+  },
+  {
+   "key": "ae.abl_bv_thr_high",
+   "ptype": "float",
+   "lo": 0.0,
+   "hi": 1000000000.0,
+   "default": 0.0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_BV_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·abl_bv_thr_high"
+  },
+  {
+   "key": "ae.abl_dark_bright_pos_thr_dark_low",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_DARK_BRIGHT_POS_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·abl_dark_bright_pos_thr_dark_low"
+  },
+  {
+   "key": "ae.abl_dark_bright_pos_thr_dark_high",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_DARK_BRIGHT_POS_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·abl_dark_bright_pos_thr_dark_high"
+  },
+  {
+   "key": "ae.abl_dark_bright_pos_thr_bright_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_DARK_BRIGHT_POS_THR",
+   "arg_idx": 2,
+   "desc": "自动曝光·abl_dark_bright_pos_thr_bright_thr"
+  },
+  {
+   "key": "ae.abl_expo_gain_thr_low",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_EXPO_GAIN_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·abl_expo_gain_thr_low"
+  },
+  {
+   "key": "ae.abl_expo_gain_thr_high",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_EXPO_GAIN_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·abl_expo_gain_thr_high"
+  },
+  {
+   "key": "ae.abl_expo_line_ratio_low",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_EXPO_LINE_RATIO",
+   "arg_idx": 0,
+   "desc": "自动曝光·abl_expo_line_ratio_low"
+  },
+  {
+   "key": "ae.abl_expo_line_ratio_high",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_EXPO_LINE_RATIO",
+   "arg_idx": 1,
+   "desc": "自动曝光·abl_expo_line_ratio_high"
+  },
+  {
+   "key": "ae.abl_gain_mode",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_GAIN_MODE",
+   "arg_idx": 0,
+   "desc": "自动曝光·abl_gain_mode"
+  },
+  {
+   "key": "ae.abl_lock_thr_diff_ratio",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_LOCK_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·abl_lock_thr_diff_ratio"
+  },
+  {
+   "key": "ae.abl_lock_thr_dark_pos_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_LOCK_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·abl_lock_thr_dark_pos_thr"
+  },
+  {
+   "key": "ae.abl_lock_thr_bright_pos_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_LOCK_THR",
+   "arg_idx": 2,
+   "desc": "自动曝光·abl_lock_thr_bright_pos_thr"
+  },
+  {
+   "key": "ae.abl_luma_max",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ABL_LUMA_MAX",
+   "arg_idx": 0,
+   "desc": "自动曝光·abl_luma_max"
+  },
+  {
+   "key": "ae.analog_gain_max_gain",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ANALOG_GAIN",
+   "arg_idx": 0,
+   "desc": "自动曝光·analog_gain_max_gain"
+  },
+  {
+   "key": "ae.analog_gain_min_gain",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ANALOG_GAIN",
+   "arg_idx": 1,
+   "desc": "自动曝光·analog_gain_min_gain"
+  },
+  {
+   "key": "ae.aoe_bv_thr",
+   "ptype": "float",
+   "lo": 0,
+   "hi": 65535,
+   "default": 8000,
+   "cmd": "ISP_IOCTL_CMD_AE_AOE_BV_THR",
+   "arg_idx": 0,
+   "desc": "AOE 防过曝 BV 阈值(官方预设 Medium/High=8000/10000); BV<阈值判为过曝风险场景, 配合 aoe_expo_gain_thr 压增益——夜间红爆的关键参数",
+   "effects": "调整强光场景的曝光压制时机",
+   "unit": "BV原始值"
+  },
+  {
+   "key": "ae.aoe_bv_thr_high",
+   "ptype": "float",
+   "lo": 0.0,
+   "hi": 1000000000.0,
+   "default": 0.0,
+   "cmd": "ISP_IOCTL_CMD_AE_AOE_BV_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·aoe_bv_thr_high"
+  },
+  {
+   "key": "ae.aoe_dark_bright_pos_thr_dark_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_AOE_DARK_BRIGHT_POS_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·aoe_dark_bright_pos_thr_dark_thr"
+  },
+  {
+   "key": "ae.aoe_dark_bright_pos_thr_bright_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_AOE_DARK_BRIGHT_POS_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·aoe_dark_bright_pos_thr_bright_thr"
+  },
+  {
+   "key": "ae.aoe_expo_gain_p0",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_AOE_EXPO_GAIN",
+   "arg_idx": 0,
+   "desc": "自动曝光·aoe_expo_gain_p0"
+  },
+  {
+   "key": "ae.aoe_expo_gain_p1",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_AOE_EXPO_GAIN",
+   "arg_idx": 1,
+   "desc": "自动曝光·aoe_expo_gain_p1"
+  },
+  {
+   "key": "ae.bright_dark_pixel_ratio_bright_low",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_BRIGHT_DARK_PIXEL_RATIO",
+   "arg_idx": 0,
+   "desc": "自动曝光·bright_dark_pixel_ratio_bright_low"
+  },
+  {
+   "key": "ae.bright_dark_pixel_ratio_bright_high",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_BRIGHT_DARK_PIXEL_RATIO",
+   "arg_idx": 1,
+   "desc": "自动曝光·bright_dark_pixel_ratio_bright_high"
+  },
+  {
+   "key": "ae.bright_dark_pixel_ratio_dark_low",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_BRIGHT_DARK_PIXEL_RATIO",
+   "arg_idx": 2,
+   "desc": "自动曝光·bright_dark_pixel_ratio_dark_low"
+  },
+  {
+   "key": "ae.bright_dark_pixel_ratio_dark_high",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_BRIGHT_DARK_PIXEL_RATIO",
+   "arg_idx": 3,
+   "desc": "自动曝光·bright_dark_pixel_ratio_dark_high"
+  },
+  {
+   "key": "ae.config_interval",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_CONFIG_INTERVAL",
+   "arg_idx": 0,
+   "desc": "自动曝光·config_interval"
+  },
+  {
+   "key": "ae.day_night_bv",
+   "ptype": "float",
+   "lo": 0,
+   "hi": 100000,
+   "default": 10000,
+   "cmd": "ISP_IOCTL_CMD_AE_DAY_NIGHT_BV",
+   "arg_idx": 0,
+   "desc": "日夜切换 BV 阈值——注意: AE_DAY_NIGHT_BV 是双参数命令(day_bv+night_bv 一次下发), 联调时在 adapter 做合并; 迟滞=两阈值间距",
+   "effects": "to_night_bv 调小→更晚切夜间; to_day_bv 调大→更早切白天; 两值间距=迟滞防抖",
+   "unit": "BV原始值(与场景亮度成正比)"
+  },
+  {
+   "key": "ae.day_night_bv_night_bv",
+   "ptype": "float",
+   "lo": 0.0,
+   "hi": 1000000000.0,
+   "default": 0.0,
+   "cmd": "ISP_IOCTL_CMD_AE_DAY_NIGHT_BV",
+   "arg_idx": 1,
+   "desc": "自动曝光·day_night_bv_night_bv"
+  },
+  {
+   "key": "ae.ev_offset_type",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_EV_OFFSET_TYPE",
+   "arg_idx": 0,
+   "desc": "自动曝光·ev_offset_type"
+  },
+  {
+   "key": "ae.exposure_line_max_line",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_EXPOSURE_LINE",
+   "arg_idx": 0,
+   "desc": "自动曝光·exposure_line_max_line"
+  },
+  {
+   "key": "ae.exposure_line_min_line",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_EXPOSURE_LINE",
+   "arg_idx": 1,
+   "desc": "自动曝光·exposure_line_min_line"
+  },
+  {
+   "key": "ae.exposure_line_def_line",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_EXPOSURE_LINE",
+   "arg_idx": 2,
+   "desc": "自动曝光·exposure_line_def_line"
+  },
+  {
+   "key": "ae.frame_max",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_FRAME_MAX",
+   "arg_idx": 0,
+   "desc": "自动曝光·frame_max"
+  },
+  {
+   "key": "ae.frame_max_vb",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_FRAME_MAX",
+   "arg_idx": 1,
+   "desc": "自动曝光·frame_max_vb"
+  },
+  {
+   "key": "ae.hist_pixel_thr_upper",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_HIST_PIXEL_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·hist_pixel_thr_upper"
+  },
+  {
+   "key": "ae.hist_pixel_thr_upper_hs",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_HIST_PIXEL_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·hist_pixel_thr_upper_hs"
+  },
+  {
+   "key": "ae.hist_pixel_thr_lower",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_HIST_PIXEL_THR",
+   "arg_idx": 2,
+   "desc": "自动曝光·hist_pixel_thr_lower"
+  },
+  {
+   "key": "ae.hist_thr_p0",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_HIST_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·hist_thr_p0"
+  },
+  {
+   "key": "ae.hist_thr_p1",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_HIST_THR",
+   "arg_idx": 1,
+   "desc": "自动曝光·hist_thr_p1"
+  },
+  {
+   "key": "ae.lock_param_cnt",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_LOCK_PARAM",
+   "arg_idx": 0,
+   "desc": "自动曝光·lock_param_cnt"
+  },
+  {
+   "key": "ae.lock_param_diff",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_LOCK_PARAM",
+   "arg_idx": 1,
+   "desc": "自动曝光·lock_param_diff"
+  },
+  {
+   "key": "ae.lock_param_alpha",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_LOCK_PARAM",
+   "arg_idx": 2,
+   "desc": "自动曝光·lock_param_alpha"
+  },
   {
    "key": "ae.luma_target",
    "ptype": "int",
@@ -82,28 +611,465 @@
    "effects": "影响测光区域偏向"
   },
   {
-   "key": "ae.day_night_bv",
-   "ptype": "float",
+   "key": "ae.manual_param_target",
+   "ptype": "int",
    "lo": 0,
-   "hi": 100000,
-   "default": 10000,
-   "cmd": "ISP_IOCTL_CMD_AE_DAY_NIGHT_BV",
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_MANUAL_PARAM",
    "arg_idx": 0,
-   "desc": "日夜切换 BV 阈值——注意: AE_DAY_NIGHT_BV 是双参数命令(day_bv+night_bv 一次下发), 联调时在 adapter 做合并; 迟滞=两阈值间距",
-   "effects": "to_night_bv 调小→更晚切夜间; to_day_bv 调大→更早切白天; 两值间距=迟滞防抖",
-   "unit": "BV原始值(与场景亮度成正比)"
+   "desc": "AE 手动使能(0自动/1手动)"
   },
   {
-   "key": "ae.aoe_bv_thr",
-   "ptype": "float",
+   "key": "ae.manual_param_analog_gain",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_MANUAL_PARAM",
+   "arg_idx": 1,
+   "desc": "自动曝光·manual_param_analog_gain"
+  },
+  {
+   "key": "ae.manual_param_expo_line",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_MANUAL_PARAM",
+   "arg_idx": 2,
+   "desc": "自动曝光·manual_param_expo_line"
+  },
+  {
+   "key": "ae.pos_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_POS_THR",
+   "arg_idx": 0,
+   "desc": "自动曝光·pos_thr"
+  },
+  {
+   "key": "ae.reduce_fps",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_REDUCE_FPS",
+   "arg_idx": 0,
+   "desc": "自动曝光·reduce_fps"
+  },
+  {
+   "key": "ae.row_time_us",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_ROW_TIME_US",
+   "arg_idx": 0,
+   "desc": "自动曝光·row_time_us"
+  },
+  {
+   "key": "ae.stg_param_stg_mode",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 1,
+   "cmd": "ISP_IOCTL_CMD_AE_STG_PARAM",
+   "arg_idx": 0,
+   "desc": "自动曝光策略 0：高光优先； 1：低光优先"
+  },
+  {
+   "key": "ae.stg_param_ratio_slope",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_STG_PARAM",
+   "arg_idx": 1,
+   "desc": "自动曝光·stg_param_ratio_slope"
+  },
+  {
+   "key": "ae.stg_param_max_offset",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AE_STG_PARAM",
+   "arg_idx": 2,
+   "desc": "自动曝光·stg_param_max_offset"
+  },
+  {
+   "key": "ae.hs_bin_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_HIST_HS_BIN_THR",
+   "arg_idx": 0,
+   "desc": "曝光统计·hs_bin_thr"
+  },
+  {
+   "key": "ae.lsb_gain_4hi_fps",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_LOWLIGHT_LSB_GAIN_4HI_FPS",
+   "arg_idx": 0,
+   "desc": "低照增益·lsb_gain_4hi_fps"
+  },
+  {
+   "key": "ae.lsb_gain_4lo_fps",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_LOWLIGHT_LSB_GAIN_4LO_FPS",
+   "arg_idx": 0,
+   "desc": "低照增益·lsb_gain_4lo_fps"
+  },
+  {
+   "key": "ae.lsb_gain_en",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_LOWLIGHT_LSB_GAIN_EN",
+   "arg_idx": 0,
+   "desc": "低照增益·lsb_gain_en"
+  },
+  {
+   "key": "awb.auto_ctrl",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_AUTO_CTRL",
+   "arg_idx": 0,
+   "desc": "AWB 自动模式使能(0手动/1自动)"
+  },
+  {
+   "key": "awb.coarse_constraint_ctrl",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_COARSE_CONSTRAINT_CTRL",
+   "arg_idx": 0,
+   "desc": "自动白平衡·coarse_constraint_ctrl"
+  },
+  {
+   "key": "awb.control_step_coarse",
+   "ptype": "int",
    "lo": 0,
    "hi": 65535,
-   "default": 8000,
-   "cmd": "ISP_IOCTL_CMD_AE_AOE_BV_THR",
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_CONTROL_STEP",
    "arg_idx": 0,
-   "desc": "AOE 防过曝 BV 阈值(官方预设 Medium/High=8000/10000); BV<阈值判为过曝风险场景, 配合 aoe_expo_gain_thr 压增益——夜间红爆的关键参数",
-   "effects": "调整强光场景的曝光压制时机",
-   "unit": "BV原始值"
+   "desc": "自动白平衡·control_step_coarse"
+  },
+  {
+   "key": "awb.control_step_fine",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 65535,
+   "default": 1,
+   "cmd": "ISP_IOCTL_CMD_AWB_CONTROL_STEP",
+   "arg_idx": 1,
+   "desc": "自动白平衡·control_step_fine"
+  },
+  {
+   "key": "awb.control_thr_coarse_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 65535,
+   "default": 3,
+   "cmd": "ISP_IOCTL_CMD_AWB_CONTROL_THR",
+   "arg_idx": 0,
+   "desc": "自动白平衡·control_thr_coarse_thr"
+  },
+  {
+   "key": "awb.control_thr_hi_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 65535,
+   "default": 4,
+   "cmd": "ISP_IOCTL_CMD_AWB_CONTROL_THR",
+   "arg_idx": 1,
+   "desc": "自动白平衡·control_thr_hi_thr"
+  },
+  {
+   "key": "awb.control_thr_lo_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 65535,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_CONTROL_THR",
+   "arg_idx": 2,
+   "desc": "自动白平衡·control_thr_lo_thr"
+  },
+  {
+   "key": "awb.control_thr_rgb_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 65535,
+   "default": 16,
+   "cmd": "ISP_IOCTL_CMD_AWB_CONTROL_THR",
+   "arg_idx": 3,
+   "desc": "自动白平衡·control_thr_rgb_thr"
+  },
+  {
+   "key": "awb.control_thr_yuv_thr",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 65535,
+   "default": 3,
+   "cmd": "ISP_IOCTL_CMD_AWB_CONTROL_THR",
+   "arg_idx": 4,
+   "desc": "自动白平衡·control_thr_yuv_thr"
+  },
+  {
+   "key": "awb.crop_range_start_v",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_CROP_RANGE",
+   "arg_idx": 0,
+   "desc": "自动白平衡·crop_range_start_v"
+  },
+  {
+   "key": "awb.crop_range_start_h",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_CROP_RANGE",
+   "arg_idx": 1,
+   "desc": "自动白平衡·crop_range_start_h"
+  },
+  {
+   "key": "awb.crop_range_end_v",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_CROP_RANGE",
+   "arg_idx": 2,
+   "desc": "自动白平衡·crop_range_end_v"
+  },
+  {
+   "key": "awb.crop_range_end_h",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_CROP_RANGE",
+   "arg_idx": 3,
+   "desc": "自动白平衡·crop_range_end_h"
+  },
+  {
+   "key": "awb.fine_constraint_ctrl",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_FINE_CONSTRAINT_CTRL",
+   "arg_idx": 0,
+   "desc": "自动白平衡·fine_constraint_ctrl"
+  },
+  {
+   "key": "awb.gain_type",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_GAIN_TYPE",
+   "arg_idx": 0,
+   "desc": "自动白平衡·gain_type"
+  },
+  {
+   "key": "awb.mannul_mode_type",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_MANNUL_MODE_TYPE",
+   "arg_idx": 0,
+   "desc": "自动白平衡·mannul_mode_type"
+  },
+  {
+   "key": "awb.meas_mode",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_MEAS_MODE",
+   "arg_idx": 0,
+   "desc": "AWB 统计模式(0:YUV,1:RGB,2:YUV_NEW)"
+  },
+  {
+   "key": "awb.rgb_constraint_r_max",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_RGB_CONSTRAINT",
+   "arg_idx": 0,
+   "desc": "自动白平衡·rgb_constraint_r_max"
+  },
+  {
+   "key": "awb.rgb_constraint_g_max",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_RGB_CONSTRAINT",
+   "arg_idx": 1,
+   "desc": "自动白平衡·rgb_constraint_g_max"
+  },
+  {
+   "key": "awb.rgb_constraint_b_max",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_RGB_CONSTRAINT",
+   "arg_idx": 2,
+   "desc": "自动白平衡·rgb_constraint_b_max"
+  },
+  {
+   "key": "awb.wp_expect_cr_target",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 2048,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_EXPECT",
+   "arg_idx": 0,
+   "desc": "自动白平衡·wp_expect_cr_target"
+  },
+  {
+   "key": "awb.wp_expect_cb_target",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 2048,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_EXPECT",
+   "arg_idx": 1,
+   "desc": "自动白平衡·wp_expect_cb_target"
+  },
+  {
+   "key": "awb.wp_num_restrain_wp_min",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_NUM_RESTRAIN",
+   "arg_idx": 0,
+   "desc": "自动白平衡·wp_num_restrain_wp_min"
+  },
+  {
+   "key": "awb.wp_num_restrain_wp_max",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_NUM_RESTRAIN",
+   "arg_idx": 1,
+   "desc": "自动白平衡·wp_num_restrain_wp_max"
+  },
+  {
+   "key": "awb.wp_range_constraint_cb_min",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_RANGE_CONSTRAINT",
+   "arg_idx": 0,
+   "desc": "自动白平衡·wp_range_constraint_cb_min"
+  },
+  {
+   "key": "awb.wp_range_constraint_cr_min",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_RANGE_CONSTRAINT",
+   "arg_idx": 1,
+   "desc": "自动白平衡·wp_range_constraint_cr_min"
+  },
+  {
+   "key": "awb.wp_range_constraint_sum_val",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_RANGE_CONSTRAINT",
+   "arg_idx": 2,
+   "desc": "自动白平衡·wp_range_constraint_sum_val"
+  },
+  {
+   "key": "awb.wp_range_constraintf_cb_min",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_RANGE_CONSTRAINTF",
+   "arg_idx": 0,
+   "desc": "自动白平衡·wp_range_constraintf_cb_min"
+  },
+  {
+   "key": "awb.wp_range_constraintf_cr_min",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_RANGE_CONSTRAINTF",
+   "arg_idx": 1,
+   "desc": "自动白平衡·wp_range_constraintf_cr_min"
+  },
+  {
+   "key": "awb.wp_range_constraintf_sum_val",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_AWB_WP_RANGE_CONSTRAINTF",
+   "arg_idx": 2,
+   "desc": "自动白平衡·wp_range_constraintf_sum_val"
+  },
+  {
+   "key": "ce.contrast",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 255,
+   "default": 128,
+   "cmd": "ISP_IOCTL_CMD_CE_CONTRAST",
+   "arg_idx": 0,
+   "desc": "色彩增强-对比度",
+   "effects": "增大→通透感提升但暗部易死黑"
+  },
+  {
+   "key": "ce.hue",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_CE_HUE",
+   "arg_idx": 0,
+   "desc": "range: -180 ~ 180'"
+  },
+  {
+   "key": "ce.luma",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 50,
+   "cmd": "ISP_IOCTL_CMD_CE_LUMA",
+   "arg_idx": 0,
+   "desc": "range: 0 ~ 100"
   },
   {
    "key": "ce.saturation",
@@ -117,15 +1083,162 @@
    "effects": "增大→更艳；过大会失真"
   },
   {
-   "key": "ce.contrast",
+   "key": "ce.yuv_range",
    "ptype": "int",
    "lo": 0,
-   "hi": 255,
-   "default": 128,
-   "cmd": "ISP_IOCTL_CMD_CE_CONTRAST",
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_CE_YUV_RANGE",
    "arg_idx": 0,
-   "desc": "色彩增强-对比度",
-   "effects": "增大→通透感提升但暗部易死黑"
+   "desc": "narrow : 0 full : 1"
+  },
+  {
+   "key": "gamma.dyn_ygamma_opt_dyn_gamma_en",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_DYN_YGAMMA_OPT",
+   "arg_idx": 0,
+   "desc": "动态伽马·dyn_ygamma_opt_dyn_gamma_en"
+  },
+  {
+   "key": "gamma.dyn_ygamma_opt_ygamma_opt",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_DYN_YGAMMA_OPT",
+   "arg_idx": 1,
+   "desc": "动态伽马·dyn_ygamma_opt_ygamma_opt"
+  },
+  {
+   "key": "img.mirror",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_IMG_MIRROR",
+   "arg_idx": 0,
+   "desc": "图像翻转·mirror"
+  },
+  {
+   "key": "img.reverse",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_IMG_REVERSE",
+   "arg_idx": 0,
+   "desc": "图像翻转·reverse"
+  },
+  {
+   "key": "lhs.lhs_map_map_num",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_LHS_MAP",
+   "arg_idx": 0,
+   "desc": "局部色相饱和·lhs_map_map_num"
+  },
+  {
+   "key": "lhs.lhs_map_map_start",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_LHS_MAP",
+   "arg_idx": 1,
+   "desc": "局部色相饱和·lhs_map_map_start"
+  },
+  {
+   "key": "md.detect_param_frame_val",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_MD_DETECT_PARAM",
+   "arg_idx": 0,
+   "desc": "移动检测·detect_param_frame_val"
+  },
+  {
+   "key": "md.detect_param_block_val",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_MD_DETECT_PARAM",
+   "arg_idx": 1,
+   "desc": "移动检测·detect_param_block_val"
+  },
+  {
+   "key": "md.detect_param_frame_cnt",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_MD_DETECT_PARAM",
+   "arg_idx": 2,
+   "desc": "移动检测·detect_param_frame_cnt"
+  },
+  {
+   "key": "md.window_param_win_start_h",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_MD_WINDOW_PARAM",
+   "arg_idx": 0,
+   "desc": "移动检测·window_param_win_start_h"
+  },
+  {
+   "key": "md.window_param_win_start_v",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_MD_WINDOW_PARAM",
+   "arg_idx": 1,
+   "desc": "移动检测·window_param_win_start_v"
+  },
+  {
+   "key": "md.window_param_win_end_h",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_MD_WINDOW_PARAM",
+   "arg_idx": 2,
+   "desc": "移动检测·window_param_win_end_h"
+  },
+  {
+   "key": "md.window_param_win_end_v",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 0,
+   "cmd": "ISP_IOCTL_CMD_MD_WINDOW_PARAM",
+   "arg_idx": 3,
+   "desc": "移动检测·window_param_win_end_v"
+  },
+  {
+   "key": "nr.dnr3_enable",
+   "ptype": "bool",
+   "default": 1,
+   "cmd": "ISP_IOCTL_CMD_3DNR_ENABLE",
+   "arg_idx": 0,
+   "desc": "3D 降噪使能"
+  },
+  {
+   "key": "sys.fps_opt",
+   "ptype": "float",
+   "lo": 0.0,
+   "hi": 1000000000.0,
+   "default": 0.0,
+   "cmd": "ISP_IOCTL_CMD_FPS_OPT",
+   "arg_idx": 0,
+   "desc": "帧率优化目标(fps, 浮点位型下发)"
   },
   {
    "key": "wdr.enable",
@@ -147,21 +1260,14 @@
    "effects": "影响 WDR 融合的噪声门限"
   },
   {
-   "key": "nr.dnr3_enable",
-   "ptype": "bool",
-   "default": 1,
-   "cmd": "ISP_IOCTL_CMD_3DNR_ENABLE",
-   "arg_idx": 0,
-   "desc": "3D 降噪使能"
-  },
-  {
-   "key": "img.black_white_mode",
-   "ptype": "bool",
-   "default": 0,
-   "cmd": "ISP_IOCTL_CMD_BLACK_WHITE_MODE",
-   "arg_idx": 0,
-   "desc": "黑白模式(红外夜视用)",
-   "effects": "红外模式去假彩色的常用开关"
+   "key": "wdr.noise_floor_cfg_noise_floor_out",
+   "ptype": "int",
+   "lo": 0,
+   "hi": 4294967295,
+   "default": 128,
+   "cmd": "ISP_IOCTL_CMD_WDR_NOISE_FLOOR",
+   "arg_idx": 1,
+   "desc": "噪声抑制输入控制点"
   }
  ]
 }

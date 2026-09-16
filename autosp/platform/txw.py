@@ -166,7 +166,25 @@ class TXW828Platform(AbstractTuningPlatform):
         if self.proto.ser is None:
             self.proto.open(self.port)
 
-    # schema 键 -> (命令名, 参数索引, 缩放) 的映射在 param_schema.json 的 "cmd" 字段
+    # schema 键 -> (命令名, 参数索引) 的映射在 param_schema.json 的 cmd/arg_idx 字段
+    def _cmd_arg_groups(self):
+        """schema 参数按命令分组: {cmd: {arg_idx: ParamSpec}}(缓存)。"""
+        if not hasattr(self, "_groups"):
+            g = {}
+            for spec in self.get_schema().params.values():
+                d = spec.to_dict()
+                if d.get("cmd"):
+                    g.setdefault(d["cmd"], {})[d.get("arg_idx", 0)] = spec
+            self._groups = g
+        return self._groups
+
+    @staticmethod
+    def _to_u32(val, ptype):
+        """标量 → 线上 u32: float 走 IEEE754 位型。"""
+        if ptype == "float":
+            return struct.unpack("<I", struct.pack("<f", float(val)))[0]
+        return int(val) & 0xFFFFFFFF
+
     def set_params(self, params: dict):
         ok, msg = self.get_schema().validate(params)
         if not ok:
@@ -177,14 +195,23 @@ class TXW828Platform(AbstractTuningPlatform):
             return
         self._ensure_link()
         schema = self.get_schema()
+        groups = self._cmd_arg_groups()
+        # 同命令多参数必须合帧下发: 固件按整包覆盖, 分开发会互相清零。
+        # 只改部分槽位时, 其余槽位用当前值(schema default 起步)填充。
+        by_cmd = {}
         for key, val in params.items():
-            spec = schema.get(key)
-            cmd_name = getattr(spec, "cmd", None) or spec.to_dict().get("cmd")
-            idx = spec.to_dict().get("arg_idx", 0) if spec else 0
-            # 单参数命令: 该参数独立发一帧（简化模型; 多参数组合命令在联调时扩展）
-            ret = self.proto.set_cmd(cmd_name, [int(val)] if float(val).is_integer() else [val])
+            d = schema.get(key).to_dict()
+            by_cmd.setdefault(d["cmd"], {})[d.get("arg_idx", 0)] = val
+        for cmd_name, changed in by_cmd.items():
+            spec_args = groups[cmd_name]
+            args = []
+            for i in range(max(spec_args) + 1):
+                spec = spec_args[i]
+                v = changed.get(i, self._current.get(spec.key, spec.sample_default()))
+                args.append(self._to_u32(v, spec.ptype))
+            ret = self.proto.set_cmd(cmd_name, args)
             if ret != 0:
-                raise IOError("命令 %s(%s) 返回错误码 %s" % (key, cmd_name, ret))
+                raise IOError("命令 %s(%s) 返回错误码 %s" % (list(changed), cmd_name, ret))
 
     def capture(self, scene="default") -> dict:
         if self.dry_run:

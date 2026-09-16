@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """TXW828 平台适配层与参数 schema 的单元测试（dry-run，无需设备）。"""
 import json
+import struct
 
 import pytest
 
@@ -79,6 +80,78 @@ class TestPlatformOverFakeSerial:
         pf.proto.ser.feed(make_ack(55, ret=1))  # CFG_PARAM_ERR
         with pytest.raises(IOError, match="错误码"):
             pf.set_params({"ae.luma_target": 110})
+
+
+# ---------------- 多参数命令合帧（避免部分下发清零其余槽位） ----------------
+
+class TestMultiArgGroupPacking:
+    def _frames_of(self, pf):
+        """切出已发送的帧: [(cmd_num, arg_count, args_bytes)]"""
+        out, buf = [], bytes(pf.proto.ser.tx)
+        i = 0
+        while i + 12 <= len(buf):
+            head_len = 8 + int.from_bytes(buf[i + 6:i + 8], "little") * 4
+            frame = buf[i:i + head_len + 2]
+            import struct as _s
+            _, cmd, _, n = _s.unpack("<HHHH", frame[:8])
+            out.append((cmd, n, frame[8:8 + n * 4]))
+            i += head_len + 2
+        return out
+
+    def test_partial_update_fills_sibling_slots(self):
+        """AE_DAY_NIGHT_BV 是双参数命令(day_bv,night_bv): 只改 day 也必须发满 2 参数。
+        该命令线上为 IEEE754 位型(结构体 float 字段)。"""
+        pf = TXW828Platform(dry_run=False)
+        pf.proto.ser = FakeSerial()
+        pf.proto.ser.feed(make_ack(45, 0))
+        pf.set_params({"ae.day_night_bv": 9000.0})
+        (cmd, n, args), = self._frames_of(pf)
+        assert cmd == 45 and n == 2
+        day, night = struct.unpack("<ff", args)
+        night_default = pf.get_schema().get("ae.day_night_bv_night_bv").default
+        assert day == 9000.0
+        assert night == float(night_default)
+
+    def test_same_cmd_params_merged_into_one_frame(self):
+        """同一命令的两个参数只产生一帧。"""
+        pf = TXW828Platform(dry_run=False)
+        pf.proto.ser = FakeSerial()
+        pf.proto.ser.feed(make_ack(45, 0))
+        pf.set_params({"ae.day_night_bv": 8000.0, "ae.day_night_bv_night_bv": 2000})
+        frames = self._frames_of(pf)
+        assert len(frames) == 1
+        assert struct.unpack("<ff", frames[0][2]) == (8000.0, 2000.0)
+
+    def test_float_param_packed_as_ieee754_bits(self):
+        pf = TXW828Platform(dry_run=False)
+        pf.proto.ser = FakeSerial()
+        pf.proto.ser.feed(make_ack(115, 0))
+        pf.set_params({"sys.fps_opt": 25.5})
+        (cmd, n, args), = self._frames_of(pf)
+        assert cmd == 115 and n == 1
+        assert struct.unpack("<f", args[:4])[0] == 25.5
+
+    def test_current_value_used_after_two_updates(self):
+        """第二次只改 night 时, day 用上次下发的值而非 default。"""
+        pf = TXW828Platform(dry_run=False)
+        pf.proto.ser = FakeSerial()
+        pf.proto.ser.feed(make_ack(45, 0))
+        pf.proto.ser.feed(make_ack(45, 0))
+        pf.set_params({"ae.day_night_bv": 7000.0})
+        pf.set_params({"ae.day_night_bv_night_bv": 3000})
+        f2 = self._frames_of(pf)[-1]
+        assert struct.unpack("<ff", f2[2]) == (7000.0, 3000.0)
+
+    def test_int_param_packed_as_plain_int(self):
+        """整型参数(如 AWB_CONTROL_STEP)直接整数值下发, 不做位型转换。"""
+        pf = TXW828Platform(dry_run=False)
+        pf.proto.ser = FakeSerial()
+        pf.proto.ser.feed(make_ack(22, 0))   # AWB_CONTROL_STEP
+        pf.set_params({"awb.control_step_fine": 5})
+        (cmd, n, args), = self._frames_of(pf)
+        assert cmd == 22 and n == 2
+        coarse_dflt = pf.get_schema().get("awb.control_step_coarse").default
+        assert struct.unpack("<II", args) == (int(coarse_dflt), 5)
 
 
 # ---------------- Schema 加载与校验 ----------------

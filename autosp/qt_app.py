@@ -232,6 +232,9 @@ class MainWindow(QMainWindow):
 
         gb_params = QGroupBox("参数快速应用 (改动后点应用, 预览实时看效果)")
         v3 = QVBoxLayout(gb_params)
+        self.combo_group = QComboBox()
+        self.combo_group.currentIndexChanged.connect(self.filter_params)
+        v3.addWidget(self.combo_group)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["参数", "值", "范围", "说明"])
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
@@ -307,12 +310,20 @@ class MainWindow(QMainWindow):
         self.log("串口已断开")
 
     # ================= 参数表 =================
+    GROUP_NAMES = {"ae": "AE 曝光", "awb": "AWB 白平衡", "ce": "色彩增强", "wdr": "宽动态",
+                   "sharp": "锐化", "nr": "降噪", "gamma": "伽马", "blc": "黑电平",
+                   "ccm": "颜色矩阵", "dpc": "坏点", "csc": "色彩空间", "gic": "绿紫修正",
+                   "lhs": "局部色相", "md": "移动检测", "img": "图像翻转", "sys": "系统"}
+
     def load_params(self):
         sch = TXW828Platform().get_schema()
         self.table.setRowCount(len(sch.params))
         self._defaults = {}
+        counts = {}
         for r, spec in enumerate(sch.params.values()):
             d = spec.to_dict()
+            g = d["key"].split(".")[0]
+            counts[g] = counts.get(g, 0) + 1
             self._defaults[d["key"]] = d.get("default")
             it0 = QTableWidgetItem(d["key"])
             it0.setFlags(it0.flags() & ~Qt.ItemIsEditable)
@@ -325,6 +336,21 @@ class MainWindow(QMainWindow):
             it3.setFlags(it3.flags() & ~Qt.ItemIsEditable)
             for c, it in enumerate((it0, it1, it2, it3)):
                 self.table.setItem(r, c, it)
+        self.combo_group.blockSignals(True)
+        self.combo_group.clear()
+        self.combo_group.addItem("全部模块 (%d)" % len(sch.params))
+        for g in sorted(counts):
+            self.combo_group.addItem("%s (%d)" % (self.GROUP_NAMES.get(g, g), counts[g]))
+        self.combo_group.blockSignals(False)
+
+    def filter_params(self):
+        sel = self.combo_group.currentText()
+        g = sel.split(" (")[0]
+        want = None if g.startswith("全部") else \
+            next((k for k, v in self.GROUP_NAMES.items() if v == g), g)
+        for r in range(self.table.rowCount()):
+            key = self.table.item(r, 0).text()
+            self.table.setRowHidden(r, bool(want and not key.startswith(want + ".")))
 
     def _pf(self):
         if not (self.pf and self.pf.proto.ser):
