@@ -1,0 +1,21 @@
+{
+  "tuning_order": ["nlm", "eeh"],
+  "modules": {
+    "nlm": {
+      "goal": "去噪与细节的平衡（对 PSNR/SSIM 均敏感）",
+      "metrics": ["psnr", "ssim"],
+      "rules": [
+        {"symptom": "噪声大、PSNR 低", "action": "增大 nlm.h", "risk": "细节糊、拖影"},
+        {"symptom": "画面糊、SSIM 低", "action": "减小 nlm.h", "risk": "噪声回升"}
+      ]
+    },
+    "eeh": {
+      "goal": "锐化增益：提升边缘对比但不产生振铃",
+      "metrics": ["ssim"],
+      "rules": [
+        {"symptom": "边缘软", "action": "增大 eeh.edge_gain", "risk": "振铃/噪点锐化"},
+        {"symptom": "边缘白边/振铃", "action": "减小 eeh.edge_gain", "risk": "锐度不足"}
+      ]
+    }
+  }
+}

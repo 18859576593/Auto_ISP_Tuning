@@ -1,0 +1,16 @@
+{
+  "platform": "offline_sim",
+  "note": "Phase1 离线仿真平台的参数子集（fast-OpenISP: nlm/eeh），范围与 refs/ISP-AutoTuning 一致",
+  "params": [
+    {
+      "key": "nlm.h", "ptype": "int", "lo": 3, "hi": 300, "default": 150,
+      "desc": "NLM 非局部均值降噪的滤波强度参数 h",
+      "effects": "增大→噪声更少但画面更糊/细节损失；减小→细节保留但噪声明显"
+    },
+    {
+      "key": "eeh.edge_gain", "ptype": "int", "lo": 0, "hi": 4096, "default": 2048,
+      "desc": "边缘增强(锐化)增益",
+      "effects": "增大→边缘更锐利但易振铃/噪声被锐化；减小→画面偏软"
+    }
+  ]
+}

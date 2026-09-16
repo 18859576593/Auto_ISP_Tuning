@@ -1,0 +1,69 @@
+{
+  "tuning_order": ["ae", "blc", "dpc", "lsc", "ccm", "awb", "gamma", "nr", "sharp", "ce", "wdr"],
+  "note": "对齐官方《泰芯图像质量调优操作指南 V1.0.1》三阶段: 基本调试(BLC→DPC→LSC→CCM 严格顺序, 前步是后步精度基础) → 图像调优(AE→AWB→Gamma→NR) → 参数固化(ExportSingleParam→isp.bin)。来源: 官方指南 + ISP调参操作流程(TXISP Tuning).md",
+  "stages": {
+    "stage1_basic": {
+      "name": "基本调试(标定)",
+      "order": ["硬件AE配置(驱动代码)", "blc", "dpc", "lsc", "ccm"],
+      "procedures": {
+        "blc": "遮黑盖完全遮黑 → GET_SENSOR_RAW 抓RAW → 算R/Gr/Gb/B四通道 → 写入 → 验收:无光像素≈0",
+        "lsc": "6500K灯箱+均光片2~3cm填满画面 → GET_SENSOR_RAW → 先开LSC使能再写入4通道×153点",
+        "ccm": "D50灯箱+24色卡占画面2/3 → Imatest算3x3(每列归一) → ×256取整填入 → 验收:图3-5-2-8效果"
+      }
+    },
+    "stage2_image": {
+      "name": "图像调优",
+      "order": ["ae", "awb", "gamma", "nr"],
+      "monitor": "GET_STA 轮询 ISP_AE_AWB_INFO(bv/expo_line/gain/ae_target/luma_avg) 做过程指标"
+    },
+    "stage3_fix": {
+      "name": "参数固化",
+      "steps": ["ExportSingleParam → isp.bin", "放 project/txw82xApp 重编", "烧录后走 flash 参数", "收尾: 删 DUAL_EN 关回"]
+    }
+  },
+  "modules": {
+    "ae": {
+      "goal": "SetPoint/Tolerance/Damp/Target Filter/Motion——先于一切模块",
+      "metrics": ["ae_luma_avg", "bv"],
+      "rules": [
+        {"symptom": "夜间过曝/红爆", "action": "降低 ae.luma_target 或 aoe_bv_thr 提前触发", "risk": "画面过暗"},
+        {"symptom": "亮度切换跳变", "action": "调整 damp/收敛参数", "risk": "响应变慢"}
+      ]
+    },
+    "awb": {
+      "goal": "色偏主力模块(白点约束+增益约束)",
+      "metrics": ["delta_cb", "delta_cr", "color_temp"],
+      "rules": [
+        {"symptom": "整体偏暖", "action": "AWB_GAIN_* 约束下调 R 增益", "risk": "过调偏冷"},
+        {"symptom": "低照偏绿(红外残留)", "action": "红外场景单独调增益约束+black_white_mode", "risk": "白天档被影响"}
+      ]
+    },
+    "gamma": {
+      "goal": "RGB Gamma → Y Gamma → Gamma 强度; 夜景走 gamma.by_bv 分档",
+      "metrics": ["psnr"],
+      "rules": [{"symptom": "暗部死黑", "action": "低BV档 gamma 提亮(GAMMA_BY_BV)", "risk": "噪声放大"}]
+    },
+    "nr": {
+      "goal": "按增益分档降噪(yuvnr_map/rawn_map 为 BV→强度映射表)——红外对标安防的主战场",
+      "metrics": ["psnr", "ssim"],
+      "rules": [
+        {"symptom": "夜间噪声大", "action": "增大高增益档 yuvnr_map 映射值", "risk": "细节损失/拖影"},
+        {"symptom": "画面发蒙不通透", "action": "降低低照档降噪并回看 gamma/ce.contrast", "risk": "噪声回升"}
+      ]
+    },
+    "sharp": {"goal": "锐化参数结构体(降噪之后调)", "metrics": ["mtf"], "rules": []},
+    "ce": {"goal": "饱和度/对比度/色相 + CE_ADJ_BY_BV 按亮度自适应", "metrics": ["delta_e"], "rules": [
+      {"symptom": "不通透", "action": "适度提升 ce.contrast", "risk": "暗部死黑"}]},
+    "wdr": {"goal": "宽动态(最后调, 影响全局)", "metrics": ["dynamic_range"], "rules": [
+      {"symptom": "逆光人脸暗", "action": "开 wdr.enable 并调 wdr_tunning", "risk": "噪声放大/光晕"}]},
+    "blc": {"goal": "标定模块(阶段1, 自动化走 capture_raw)", "metrics": [], "rules": []},
+    "dpc": {"goal": "坏点: 动态实时+静态表", "metrics": [], "rules": []},
+    "lsc": {"goal": "标定模块(6500K灯箱)", "metrics": ["uniformity"], "rules": []},
+    "ccm": {"goal": "标定模块(D50+24色卡+Imatest, ×256归一)", "metrics": ["delta_e"], "rules": []}
+  },
+  "hardware_notes": [
+    "USB A-A 线必须断 VBUS(板上 SY8080 常供电会倒灌)",
+    "抓RAW需固件 DUAL_EN=1, 标定完删掉省内存",
+    "参数基线三级: flash(isp.bin) > 驱动内嵌 isp_iq_param > default_isp_param_init"
+  ]
+}

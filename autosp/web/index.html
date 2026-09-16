@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>autosp · 自动ISP调参工作台</title>
+<style>
+  :root{--bg:#16261f;--card:#1d3129;--line:#2e4a3e;--txt:#e8efe9;--mut:#8fa396;--acc:#d98e2b;--ok:#2f7d5b;--err:#b5544a}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font:14px/1.6 "Microsoft YaHei",sans-serif;padding:20px}
+  h1{font-size:20px} h1 span{color:var(--mut);font-size:13px;font-weight:400;margin-left:10px}
+  .grid{display:grid;grid-template-columns:340px 1fr;gap:16px;margin-top:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .card h2{font-size:14px;color:var(--acc);margin-bottom:10px;font-weight:600}
+  label{display:block;color:var(--mut);font-size:12px;margin:8px 0 3px}
+  select,input,textarea{width:100%;background:#121e18;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:6px 8px;font:13px "Microsoft YaHei"}
+  textarea{height:70px;resize:vertical}
+  button{background:var(--acc);color:#1c2b26;border:0;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;margin:10px 6px 0 0}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  button.stop{background:var(--err);color:#fff}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:12px;margin-left:8px}
+  .b-ok{background:var(--ok)} .b-no{background:#5a4a2a;color:#ffd9a0} .b-run{background:var(--acc);color:#1c2b26}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{color:var(--mut)} td.obj{color:var(--acc);font-weight:600}
+  img.prev{max-width:100%;border-radius:8px;border:1px solid var(--line);margin:6px 0}
+  .kv{font-size:13px}.kv b{color:var(--acc)}
+  #msg{margin-top:8px;font-size:12px;color:var(--mut);min-height:18px}
+  .best{background:#12241c;border-radius:8px;padding:10px;margin-top:8px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style>
+</head>
+<body>
+<h1>autosp 自动 ISP 调参工作台 <span id="llmbadge"></span><span id="runbadge"></span></h1>
+<div class="grid">
+<div><!-- 左列:控制 -->
+  <div class="card">
+    <h2>调参任务</h2>
+    <label>平台</label><select id="platform"></select>
+    <label>优化器</label>
+    <select id="optimizer"><option value="coord">坐标下降(推荐)</option><option value="random">随机搜索</option></select>
+    <div class="row"><div><label>轮数(模块轮转)</label><input id="rounds" type="number" value="2" min="1"></div>
+    <div><label>每轮迭代</label><input id="iters" type="number" value="5" min="1"></div></div>
+    <button onclick="start()">▶ 开始自动调参</button>
+    <button class="stop" onclick="stop()">■ 停止</button>
+    <div id="msg"></div>
+  </div>
+  <div class="card">
+    <h2>参数速览（当前平台 schema）</h2>
+    <div id="schemalist" style="max-height:260px;overflow:auto;font-size:12px"></div>
+  </div>
+  <div class="card">
+    <h2>手动操作</h2>
+    <label>写参数(JSON) + 抓图</label>
+    <textarea id="manual">{"nlm.h": 120}</textarea>
+    <button class="ghost" onclick="manual()">设参并抓图</button>
+    <button class="ghost" onclick="rollback()">↩ 回滚最新快照</button>
+    <div id="manualout"></div>
+  </div>
+</div>
+<div><!-- 右列:状态 -->
+  <div class="card">
+    <h2>运行状态</h2>
+    <div class="kv" id="stat">尚未启动</div>
+    <div class="best" id="best"></div>
+    <div id="capview"></div>
+  </div>
+  <div class="card">
+    <h2>迭代历史（最近 8 轮）</h2>
+    <table id="hist"><thead><tr><th>#</th><th>模块</th><th>参数</th><th>指标</th><th>objective</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card">
+    <h2>VLM A/B 对比评审</h2>
+    <div class="two"><div><label>图A路径</label><input id="va" placeholder="data/runs/.../cap_chart.png"></div>
+    <div><label>图B路径</label><input id="vb"></div></div>
+    <label>问题</label><input id="vq" value="哪张整体画质更好(噪声与细节)?">
+    <button class="ghost" onclick="vlm()">对比评审</button>
+    <span id="vlmout" style="font-size:12px"></span>
+  </div>
+</div>
+</div>
+<script>
+let SCHEMA={}, running=false;
+async function api(p,opt){const r=await fetch(p,Object.assign({headers:{'Content-Type':'application/json'}},opt));return r.json()}
+function msg(t){document.getElementById('msg').textContent=t||''}
+async function loadState(){
+  const s=await api('/api/state');
+  SCHEMA=s.schema;
+  document.getElementById('llmbadge').innerHTML='<span class="badge '+(s.llm?'b-ok':'b-no')+'">'+(s.llm?'LLM已接入':'LLM未配置')+'</span>';
+  const sel=document.getElementById('platform');
+  sel.innerHTML=Object.entries(s.platforms).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  renderSchema(sel.value); sel.onchange=()=>renderSchema(sel.value);
+}
+function renderSchema(name){
+  const sch=SCHEMA[name]||{}; const ps=sch.params||[];
+  document.getElementById('schemalist').innerHTML=ps.map(p=>
+    `<div style="padding:4px 0;border-bottom:1px solid var(--line)"><b>${p.key}</b>
+     <span style="color:var(--mut)"> [${p.lo}~${p.hi}]</span><br><span style="color:var(--mut)">${p.desc||''}</span></div>`).join('')||'(无)';
+  document.getElementById('manual').value=JSON.stringify(
+    Object.fromEntries(ps.slice(0,2).map(p=>[p.key,p.default])));
+}
+async function start(){
+  const body={platform:document.getElementById('platform').value,
+    optimizer:document.getElementById('optimizer').value,
+    rounds:+document.getElementById('rounds').value,iters:+document.getElementById('iters').value};
+  const r=await api('/api/tune/start',{method:'POST',body:JSON.stringify(body)});
+  msg(r.error||'已启动'); poll();
+}
+async function stop(){await api('/api/tune/stop',{method:'POST',body:'{}'});msg('已请求停止(当前迭代完成后退出)')}
+async function manual(){
+  try{const params=JSON.parse(document.getElementById('manual').value);
+    const r=await api('/api/manual',{method:'POST',body:JSON.stringify({platform:document.getElementById('platform').value,params})});
+    const el=document.getElementById('manualout');
+    if(r.error){el.textContent='❌ '+r.error;return}
+    el.innerHTML=Object.values(r.captures||{}).map(p=>`<img class="prev" src="/api/file?p=${encodeURIComponent(p)}">`).join('')||'(dry-run 平台无图)';
+  }catch(e){document.getElementById('manualout').textContent='JSON 解析错误: '+e}
+}
+async function rollback(){const r=await api('/api/rollback',{method:'POST',body:'{}'});
+  document.getElementById('manualout').textContent=r.error?('❌ '+r.error):('已回滚: '+JSON.stringify(r.params))}
+async function vlm(){
+  const body={a:document.getElementById('va').value,b:document.getElementById('vb').value,q:document.getElementById('vq').value};
+  const r=await api('/api/vlm',{method:'POST',body:JSON.stringify(body)});
+  document.getElementById('vlmout').textContent=r.error?('❌ '+r.error):('['+r.backend+'] '+r.choice+' ('+r.confidence+') '+r.reason);
+}
+async function poll(){
+  const s=await api('/api/tune/status'); running=s.running;
+  document.getElementById('runbadge').innerHTML='<span class="badge '+(running?'b-run':'b-no')+'">'+(running?'运行中':'空闲')+'</span>';
+  const st=document.getElementById('stat');
+  if(s.error){st.innerHTML='⚠ '+s.error}
+  else st.innerHTML=(s.platform?'平台: <b>'+s.platform+'</b> | ':'')+(s.run_dir?('产物: '+s.run_dir):'尚未启动');
+  const b=document.getElementById('best');
+  if(s.best){b.innerHTML='最优 objective: <b>'+s.best.objective.toFixed(4)+'</b><br>参数: <code>'+JSON.stringify(s.best.params)+'</code><br>指标: '+JSON.stringify(Object.fromEntries(Object.entries(s.best.metrics).map(([k,v])=>[k,typeof v=='number'?+v.toFixed(3):v])))}
+  else b.innerHTML='';
+  const caps=(s.best&&s.best.captures)||{};
+  document.getElementById('capview').innerHTML=Object.values(caps).map(p=>`<img class="prev" src="/api/file?p=${encodeURIComponent(p)}">`).join('');
+  const tb=document.querySelector('#hist tbody');
+  tb.innerHTML=(s.tail||[]).map((r,i)=>`<tr><td>${i+1}</td><td>${r.module||''}</td><td><code>${JSON.stringify(r.params)}</code></td><td>${JSON.stringify(Object.values(r.metrics||{}).map(v=>typeof v=='number'?+v.toFixed(3):v))}</td><td class="obj">${r.objective!=null?r.objective.toFixed(4):''}</td></tr>`).join('');
+  if(running)setTimeout(poll,2000);
+}
+loadState();poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "platform": "hailo15h",
+  "note": "Hailo-15H 参数 schema 示例。来源: hailo-media-library profile 文档(iq_settings.json/3aconfig.json 结构, community 帖 16796 增益解释)。跨平台复用性验证用。",
+  "params": [
+    {"key": "denoise.strength", "ptype": "int", "lo": 0, "hi": 100, "default": 50,
+     "desc": "iq_settings 降噪强度(Gen1 YUV域 post-ISP)", "effects": "增大→更干净但细节损失"},
+    {"key": "denoise.generation", "ptype": "enum", "enum_values": ["gen1", "gen2_vdm", "gen3_hdm"],
+     "default": "gen2_vdm", "desc": "降噪代际(运行参数 --tuning 只作用于 denoise)"},
+    {"key": "ae.maxSensorAgain", "ptype": "float", "lo": 1.0, "hi": 64.0, "default": 16.0,
+     "unit": "线性倍数(非dB)",
+     "desc": "sensor 模拟增益上限(ADC前, 噪声最干净的增益段)", "effects": "增大→低照更亮"},
+    {"key": "ae.maxSensorDgain", "ptype": "float", "lo": 1.0, "hi": 32.0, "default": 8.0,
+     "desc": "sensor 数字增益上限(ADC后, 连噪声一起放大)"},
+    {"key": "ae.MaxIspDgain", "ptype": "float", "lo": 1.0, "hi": 16.0, "default": 4.0,
+     "desc": "ISP 数字增益上限(噪声最大), 总增益=三者相乘, priority 决定填满顺序"},
+    {"key": "ae.target_y", "ptype": "int", "lo": 30, "hi": 220, "default": 110,
+     "desc": "AE 目标亮度(constraint y_target)"}
+  ]
+}

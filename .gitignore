@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# 构建产物与二进制（65MB，用 打包exe.bat 重新生成）
+build/
+dist/
+autosp-webapp.exe
+*.exe
+
+# 运行产物（调参历史/快照/抓图，运行时自动创建）
+data/
+
+# 第三方参考仓库（独立 git 克隆，不入本库；地址见 README 第七节）
+refs/
+
+# 本地密钥配置（LLM API key）
+autosp/llm_config.json
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

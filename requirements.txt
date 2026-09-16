@@ -1,0 +1,9 @@
+numpy>=1.26
+opencv-python>=4.8
+pyyaml>=6.0
+pillow>=10.0
+
+# 可选后端（Python 3.14 暂不可用，接口已留好）
+# openbox>=0.8.1      # 代理模型优化器（refs/ISP-AutoTuning 同款）
+# optuna>=3.0         # TPE 优化器
+# torch>=2.1 + lpips  # 感知指标 LPIPS
