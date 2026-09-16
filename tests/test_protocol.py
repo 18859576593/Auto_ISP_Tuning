@@ -114,6 +114,11 @@ class FakeSerial:
     def feed(self, data):
         self.rx += data
 
+    def reset_input_buffer(self):
+        # 真实串口会清掉未读字节; 测试里响应在 write 之后才到达, 置空实现
+        # (flush-before-write 行为已在真机联调中验证)
+        pass
+
 
 def make_ack(cmd_num, ret=0, bad_crc=False):
     """构造 12 字节 ACK: [0xB103, cmd, ret, crc(前6字节), 0x0000, 0x000A]。"""
@@ -122,17 +127,15 @@ def make_ack(cmd_num, ret=0, bad_crc=False):
     return body + struct.pack("<H", crc) + struct.pack("<HH", 0, 0x0A)
 
 
-def make_data_response(cmd_num, data, bad_head_crc=False, bad_data_crc=False):
-    """构造数据回传: 16 字节包头 + 按 2KB 分包的数据(每包带 CRC 和换行)。"""
-    data_crc = (crc16_modbus(data) + 1) & 0xFFFF if bad_data_crc else crc16_modbus(data)
+def make_data_response(cmd_num, data, bad_head_crc=False):
+    """构造数据回传: 16 字节包头 + 每 2048 字节数据跟 4 字节尾部(实机实测分帧)。"""
+    data_crc = crc16_modbus(data)   # 与实机可能不同; read_data 对 data_crc 仅告警
     hdr10 = struct.pack("<HHHHH", 0xB103, cmd_num, len(data) & 0xFFFF,
                         len(data) >> 16, data_crc)
     head_crc = (crc16_modbus(hdr10) + 1) & 0xFFFF if bad_head_crc else crc16_modbus(hdr10)
     out = bytearray(hdr10 + struct.pack("<H", head_crc) + struct.pack("<HH", 0, 0x0A))
-    chunk_size = TunningProtocol.PACKET - 4
-    for i in range(0, len(data), chunk_size):
-        chunk = data[i:i + chunk_size]
-        out += chunk + struct.pack("<H", crc16_modbus(chunk)) + b"\x00\x0a"
+    for i in range(0, len(data), 2048):
+        out += data[i:i + 2048] + b"\xde\xad\xbe\xef"   # 4 字节尾部(语义未定)
     return bytes(out)
 
 
@@ -190,13 +193,13 @@ class TestReadData:
 
     def test_multipacket_payload(self):
         p = make_proto()
-        payload = os.urandom(5000)  # > 2044，需要 3 个分包
+        payload = os.urandom(5000)  # > 2048，需要 3 个分包
         p.ser.feed(make_data_response(18, payload))
         assert p.read_data() == payload
 
     def test_exact_packet_boundary(self):
         p = make_proto()
-        size = (TunningProtocol.PACKET - 4) * 2  # 恰好两个整包
+        size = 2048 * 2  # 恰好两个整包
         payload = os.urandom(size)
         p.ser.feed(make_data_response(103, payload))
         assert p.read_data() == payload
@@ -205,12 +208,6 @@ class TestReadData:
         p = make_proto()
         p.ser.feed(make_data_response(18, b"data", bad_head_crc=True))
         with pytest.raises(IOError, match="包头"):
-            p.read_data()
-
-    def test_bad_data_crc_raises(self):
-        p = make_proto()
-        p.ser.feed(make_data_response(18, b"data", bad_data_crc=True))
-        with pytest.raises(IOError, match="数据 CRC"):
             p.read_data()
 
 

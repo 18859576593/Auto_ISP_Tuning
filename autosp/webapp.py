@@ -232,10 +232,8 @@ class Handler(BaseHTTPRequestHandler):
                 info = ""
                 if name == "txw828":
                     pf._ensure_link()
-                    ver = pf.proto.get_version()
-                    if isinstance(ver, bytes):
-                        ver = ver[:64].decode(errors="replace")
-                    info = str(ver)
+                    ok = pf.proto.ping()          # GET_VERSION 固件未实现, 用写参ACK做链路测试
+                    info = "链路正常" if ok else "ACK 异常"
                 STATE.update(pf=pf, platform=name)
                 return self._json({"ok": True, "version": info})
             except Exception as e:
