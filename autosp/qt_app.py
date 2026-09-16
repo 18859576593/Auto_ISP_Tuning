@@ -55,17 +55,28 @@ def _find_ffmpeg():
     return cands
 
 
+def _run_decode(cmd, timeout):
+    """以字节模式跑子进程并手工解码(utf-8→gbk 兜底)。
+    不用 text=True: 中文 Windows 下它按 GBK 解码, 遇到 ffmpeg 输出里的
+    非 GBK 字节会在读取线程抛异常, 导致 stdout/stderr 变 None 直接崩溃。"""
+    r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    for enc in ("utf-8", "gbk"):
+        try:
+            return (r.stdout or b"").decode(enc), (r.stderr or b"").decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return (r.stdout or b"").decode("utf-8", "replace"), (r.stderr or b"").decode("utf-8", "replace")
+
+
 def _cams_by_ffmpeg():
     """ffmpeg -list_devices: 顺序即 cv2 CAP_DSHOW 索引序(权威)。
-    板卡半死时 DirectShow 枚举会变慢, 用 25s 超时+重试一次。"""
+    首试 8s 快超时保证界面尽快出来, 超时(UVC 半死时 DirectShow 枚举变慢)再重试 25s。"""
     for exe in _find_ffmpeg():
-        for _attempt in range(2):
+        for t in (8, 25):
             try:
-                r = subprocess.run(
+                _, out = _run_decode(
                     [exe, "-hide_banner", "-list_devices", "true",
-                     "-f", "dshow", "-i", "dummy"],
-                    capture_output=True, text=True, timeout=25)
-                out = r.stderr
+                     "-f", "dshow", "-i", "dummy"], timeout=t)
                 # 新版 ffmpeg: [in#0 @ ...] "NAME" (video)；旧版: 分节头 + "NAME"
                 names = re.findall(r'"([^"]+)"\s+\(video\)', out)
                 if not names and "DirectShow video devices" in out:
@@ -76,7 +87,7 @@ def _cams_by_ffmpeg():
                     return [(n, i) for i, n in enumerate(names)]
                 break  # ffmpeg 可用但没解析出设备, 不再重试该 exe
             except subprocess.TimeoutExpired:
-                continue  # 枚举超时(UVC 设备无响应), 重试一次
+                continue  # 枚举超时(UVC 设备无响应), 加长超时重试一次
             except OSError:
                 break     # 该路径不可执行, 换下一个
     return None
@@ -86,12 +97,11 @@ def _cams_by_wmi():
     """无 ffmpeg 时的兜底: WMI 取设备名, 按实例路径中的枚举序号排序对齐 cv2 索引。
     实例号随 USB 枚举顺序递增, 与 DirectShow 设备序一致(经验规则)。"""
     try:
-        r = subprocess.run(
+        out, _ = _run_decode(
             ["powershell", "-NoProfile", "-Command",
              "Get-CimInstance Win32_PnPEntity -Filter \"PNPClass='Camera'\""
-             " | Select-Object Name,DeviceID | ConvertTo-Json"],
-            capture_output=True, text=True, timeout=20)
-        items = json.loads(r.stdout or "null") or []
+             " | Select-Object Name,DeviceID | ConvertTo-Json"], timeout=20)
+        items = json.loads(out or "null") or []
         if isinstance(items, dict):
             items = [items]
         def inst_no(it):
@@ -383,11 +393,16 @@ class MainWindow(QMainWindow):
 
     # ================= 预览/抓图 =================
     def refresh_cameras(self):
-        """枚举并填充摄像头下拉框, 自动选中 RTT 板载摄像头(无则第一个)。"""
+        """枚举并填充摄像头下拉框, 自动选中 RTT 板载摄像头(无则第一个)。
+        任何枚举异常只记日志, 绝不中断启动。"""
         was_running = self._timer.isActive()
         if was_running:
             self.preview_stop()
-        cams = list_cameras()
+        try:
+            cams = list_cameras()
+        except Exception as e:
+            self.log("❌ 摄像头枚举异常: %s (可稍后点「刷新」重试)" % e)
+            return
         self.combo_cam.clear()
         for name, idx in cams:
             self.combo_cam.addItem(name, idx)
