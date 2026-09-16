@@ -57,6 +57,30 @@
     <button class="ghost" onclick="rollback()">↩ 回滚最新快照</button>
     <div id="manualout"></div>
   </div>
+  <div class="card">
+    <h2>设备连接（实机）</h2>
+    <div class="row">
+      <div><label>串口</label><select id="comport"></select></div>
+      <div style="flex:0 0 72px"><button class="ghost" style="margin-top:24px" onclick="refreshPorts()">刷新</button></div>
+    </div>
+    <button onclick="connectBoard()">🔗 连板测试</button>
+    <button class="ghost" onclick="disconnectBoard()">断开</button>
+    <div id="connStatus" style="font-size:12px;color:var(--mut)"></div>
+  </div>
+  <div class="card">
+    <h2>实时预览 + 快速应用</h2>
+    <div class="row">
+      <div><label>UVC 摄像头索引</label><input id="camIdx" type="number" value="0"></div>
+      <div style="flex:0 0 80px"><button class="ghost" style="margin-top:24px" onclick="previewStart()">▶ 预览</button></div>
+    </div>
+    <img id="previewImg" class="prev" style="display:none" onerror="previewFail()">
+    <div id="previewMsg" style="font-size:12px;color:var(--mut)"></div>
+    <button class="ghost" onclick="previewStop()">■ 停止预览</button>
+    <label>快速应用参数（JSON · 只写参不抓图 · 预览实时看效果）</label>
+    <textarea id="quickParams">{"ae.luma_target": 110}</textarea>
+    <button onclick="quickSet()">⚡ 快速应用</button>
+    <span id="quickMsg" style="font-size:12px"></span>
+  </div>
 </div>
 <div><!-- 右列:状态 -->
   <div class="card">
@@ -89,7 +113,7 @@ async function loadState(){
   document.getElementById('llmbadge').innerHTML='<span class="badge '+(s.llm?'b-ok':'b-no')+'">'+(s.llm?'LLM已接入':'LLM未配置')+'</span>';
   const sel=document.getElementById('platform');
   sel.innerHTML=Object.entries(s.platforms).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
-  renderSchema(sel.value); sel.onchange=()=>renderSchema(sel.value);
+  renderSchema(sel.value); sel.onchange=()=>{renderSchema(sel.value);renderQuickDefaults()};
 }
 function renderSchema(name){
   const sch=SCHEMA[name]||{}; const ps=sch.params||[];
@@ -117,6 +141,59 @@ async function manual(){
 }
 async function rollback(){const r=await api('/api/rollback',{method:'POST',body:'{}'});
   document.getElementById('manualout').textContent=r.error?('❌ '+r.error):('已回滚: '+JSON.stringify(r.params))}
+
+// ---- 设备连接 / 实时预览 / 快速应用 ----
+let stoppingPreview=false;
+async function refreshPorts(){
+  const r=await api('/api/serial/ports');
+  const sel=document.getElementById('comport');
+  sel.innerHTML=(r.ports||[]).map(p=>`<option value="${p.device}">${p.device} — ${(p.desc||'').slice(0,28)}</option>`).join('')||'<option value="">(无串口)</option>';
+}
+async function connectBoard(){
+  const port=document.getElementById('comport').value;
+  const platform=document.getElementById('platform').value;
+  if(!port){document.getElementById('connStatus').textContent='❌ 未选择串口';return}
+  document.getElementById('connStatus').textContent='连接中...';
+  const r=await api('/api/connect',{method:'POST',body:JSON.stringify({platform,port})});
+  document.getElementById('connStatus').innerHTML=r.error?('❌ '+r.error):('✅ 已连接 '+port+(r.version?(' | '+r.version):''));
+  renderQuickDefaults();
+}
+async function disconnectBoard(){
+  const r=await api('/api/disconnect',{method:'POST',body:'{}'});
+  document.getElementById('connStatus').textContent=r.ok?'已断开':'';
+}
+function renderQuickDefaults(){
+  const sch=(SCHEMA[document.getElementById('platform').value]||{}).params||[];
+  document.getElementById('quickParams').value=JSON.stringify(Object.fromEntries(sch.slice(0,1).map(p=>[p.key,p.default])));
+}
+function previewStart(){
+  const idx=document.getElementById('camIdx').value;
+  const img=document.getElementById('previewImg');
+  stoppingPreview=false;
+  document.getElementById('previewMsg').textContent='加载流...';
+  img.style.display='block';
+  img.src='/api/preview/stream?idx='+encodeURIComponent(idx)+'&t='+Date.now();
+  img.onload=()=>{document.getElementById('previewMsg').textContent=''};
+}
+function previewFail(){
+  if(stoppingPreview){stoppingPreview=false;return}
+  document.getElementById('previewMsg').textContent='❌ 打不开该摄像头（板子未连/索引不对）';
+  document.getElementById('previewImg').style.display='none';
+}
+async function previewStop(){
+  stoppingPreview=true;
+  const img=document.getElementById('previewImg');
+  img.src='';img.style.display='none';
+  document.getElementById('previewMsg').textContent='';
+  await api('/api/preview/stop',{method:'POST',body:'{}'});
+}
+async function quickSet(){
+  try{
+    const params=JSON.parse(document.getElementById('quickParams').value);
+    const r=await api('/api/quickset',{method:'POST',body:JSON.stringify({platform:document.getElementById('platform').value,params})});
+    document.getElementById('quickMsg').textContent=r.error?('❌ '+r.error):('✅ 已应用 '+JSON.stringify(params));
+  }catch(e){document.getElementById('quickMsg').textContent='JSON 解析错误: '+e}
+}
 async function vlm(){
   const body={a:document.getElementById('va').value,b:document.getElementById('vb').value,q:document.getElementById('vq').value};
   const r=await api('/api/vlm',{method:'POST',body:JSON.stringify(body)});
@@ -137,7 +214,7 @@ async function poll(){
   tb.innerHTML=(s.tail||[]).map((r,i)=>`<tr><td>${i+1}</td><td>${r.module||''}</td><td><code>${JSON.stringify(r.params)}</code></td><td>${JSON.stringify(Object.values(r.metrics||{}).map(v=>typeof v=='number'?+v.toFixed(3):v))}</td><td class="obj">${r.objective!=null?r.objective.toFixed(4):''}</td></tr>`).join('');
   if(running)setTimeout(poll,2000);
 }
-loadState();poll();
+loadState();poll();refreshPorts();
 </script>
 </body>
 </html>

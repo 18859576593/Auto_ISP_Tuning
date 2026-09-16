@@ -35,11 +35,40 @@ from autosp.agent.guide_kb import GuideKB
 from autosp.agent.planner import RulePlanner, LLMPlanner
 from autosp.agent.runner import TuningSession
 from autosp.agent.llm_client import llm_configured
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 STATE = {"session": None, "platform": None, "pf": None, "thread": None,
          "error": "", "started_at": ""}
+
+# UVC 实时预览（板子复合设备的摄像头通道；与串口调参互不占用）
+PREVIEW = {"cap": None, "idx": None, "lock": threading.Lock()}
+
+
+def _open_preview(idx):
+    import cv2
+    with PREVIEW["lock"]:
+        if PREVIEW["cap"] is not None and PREVIEW["idx"] == idx:
+            return PREVIEW["cap"]
+        _close_preview()
+        cap = None
+        if os.name == "nt":                      # Windows: DSHOW 打开更快更稳
+            cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            if not cap.isOpened():
+                cap.release(); cap = None
+        if cap is None:
+            cap = cv2.VideoCapture(idx)
+        if not cap.isOpened():
+            cap.release()
+            return None
+        PREVIEW["cap"], PREVIEW["idx"] = cap, idx
+        return cap
+
+
+def _close_preview():
+    if PREVIEW["cap"] is not None:
+        PREVIEW["cap"].release()
+    PREVIEW["cap"], PREVIEW["idx"] = None, None
 PLATFORMS = {"offline_sim": "离线仿真(可跑闭环)", "txw828": "泰芯微TXW828(协议就绪待上板)",
              "hailo15h": "Hailo-15H(骨架)"}
 
@@ -116,6 +145,42 @@ class Handler(BaseHTTPRequestHandler):
                 "running": STATE["thread"] is not None, "platform": STATE["platform"],
                 "run_dir": s.run_dir, "best": best, "error": STATE["error"],
                 "tail": s.log.tail(8)})
+        if u.path == "/api/serial/ports":
+            try:
+                from serial.tools import list_ports
+                return self._json({"ports": [{"device": p.device, "desc": p.description}
+                                             for p in list_ports.comports()]})
+            except Exception as e:
+                return self._json({"ports": [], "error": str(e)})
+        if u.path == "/api/preview/stream":
+            # MJPEG 流：浏览器 <img> 直接消费；ThreadingHTTPServer 保证不阻塞其他 API
+            import cv2
+            q = parse_qs(u.query)
+            idx = int(q.get("idx", ["0"])[0])
+            cap = _open_preview(idx)
+            if cap is None:
+                return self._json({"error": "打不开摄像头 %d（板子未连/索引不对）" % idx}, 503)
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.end_headers()
+            try:
+                while True:
+                    with PREVIEW["lock"]:
+                        ret, frame = cap.read()
+                    if not ret:
+                        time.sleep(0.1)
+                        continue
+                    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if not ok:
+                        continue
+                    jpg = buf.tobytes()
+                    self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\n"
+                                     b"Content-Length: %d\r\n\r\n" % len(jpg))
+                    self.wfile.write(jpg)
+                    self.wfile.write(b"\r\n")
+                    time.sleep(0.066)             # ~15fps
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                return
         if u.path == "/api/file":
             q = parse_qs(u.query).get("p", [""])[0]
             norm = os.path.abspath(q)
@@ -158,6 +223,45 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "无会话"}, 400)
             params = s.snaps.rollback(s.pf, body.get("name"))
             return self._json({"ok": True, "params": params})
+        if u.path == "/api/connect":
+            # 连板：创建实机平台实例(dry_run=False)并做链路测试(TXW 走 GET_VERSION)
+            name = body.get("platform", "txw828")
+            port = body.get("port")
+            try:
+                pf = get_platform(name, port=port, dry_run=False)
+                info = ""
+                if name == "txw828":
+                    pf._ensure_link()
+                    ver = pf.proto.get_version()
+                    if isinstance(ver, bytes):
+                        ver = ver[:64].decode(errors="replace")
+                    info = str(ver)
+                STATE.update(pf=pf, platform=name)
+                return self._json({"ok": True, "version": info})
+            except Exception as e:
+                return self._json({"error": "%s: %s" % (type(e).__name__, e)}, 400)
+        if u.path == "/api/disconnect":
+            pf = STATE.get("pf")
+            if pf and getattr(pf, "proto", None) and pf.proto.ser:
+                try:
+                    pf.proto.close()
+                except Exception:
+                    pass
+            STATE["pf"], STATE["platform"] = None, None
+            return self._json({"ok": True})
+        if u.path == "/api/quickset":
+            # 快速应用：只写参数不抓图，配合 UVC 预览实时看效果
+            name = body.get("platform", "offline_sim")
+            try:
+                pf = STATE["pf"] if (STATE["pf"] and STATE["platform"] == name) else get_platform(name)
+                pf.set_params(body.get("params", {}))
+                return self._json({"ok": True, "current": getattr(pf, "_current", {})})
+            except Exception as e:
+                return self._json({"error": str(e)}, 400)
+        if u.path == "/api/preview/stop":
+            with PREVIEW["lock"]:
+                _close_preview()
+            return self._json({"ok": True})
         if u.path == "/api/vlm":
             from autosp.eval.vlm_judge import VLMJudge
             backend = "openai" if llm_configured() else "mock"
@@ -178,7 +282,8 @@ def main(port=8765):
     url = "http://127.0.0.1:%d" % port
     print("autosp Web 工具启动: %s  (Ctrl+C 退出)" % url)
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    print("提示: 实时预览为流式响应，已切换为 ThreadingHTTPServer 多线程服务")
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
 if __name__ == "__main__":
