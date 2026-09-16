@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from autosp.platform.txw import TXW828Platform
+from autosp.platform.txw_fixation import export_fixation
 
 GREEN, ACCENT, MUTED = "#2F7D5B", "#D98E2B", "#8FA396"
 
@@ -150,12 +151,17 @@ class MainWindow(QMainWindow):
         self.btn_stream.clicked.connect(self.stream_toggle)
         self.btn_stream.setToolTip("走调参协议连续抓图, 显示 ISP 处理后真实画面(与 GET_IMG 同源)。"
                                    "调参固件的 UVC 通路不喂流(实测全黑), 板子画面以此为准。")
+        self.btn_fixate = QPushButton("💾 导出固化参数")
+        self.btn_fixate.clicked.connect(self.fixate_params)
+        self.btn_fixate.setToolTip("把当前参数表的所有值导出为官方兼容的 C 源文件 + 操作指引。\n"
+                                   "按指引修改 SDK 的 isp_param_default.c 并重编烧录 = 持久化(断电不丢)。")
         row3.addWidget(self.combo_cam, 1)
         row3.addWidget(btn_cam_refresh)
         row3.addWidget(self.btn_prev)
         row3.addWidget(self.btn_stop)
         row3.addWidget(self.btn_capture)
         row3.addWidget(self.btn_stream)
+        row3.addWidget(self.btn_fixate)
         self.lbl_video = QLabel("预览区")
         self.lbl_video.setObjectName("video")
         self.lbl_video.setAlignment(Qt.AlignCenter)
@@ -432,6 +438,35 @@ class MainWindow(QMainWindow):
                 w, h, len(jpg), dt, path, img.mean()))
         except Exception as e:
             self.log("❌ GET_IMG 失败: %s" % e)
+
+    # ================= 参数固化 =================
+    def fixate_params(self):
+        """把参数表当前所有值导出为官方兼容的 C 源 + 指引 + JSON"""
+        params = {}
+        for r in range(self.table.rowCount()):
+            key = self.table.item(r, 0).text()
+            val_txt = self.table.item(r, 1).text().strip()
+            if not val_txt:
+                continue
+            try:
+                val = float(val_txt)
+                params[key] = int(val) if val == int(val) else val
+            except ValueError:
+                params[key] = val_txt
+        if not params:
+            self.log("参数表为空")
+            return
+        try:
+            from PySide6.QtWidgets import QFileDialog
+            out_dir = QFileDialog.getExistingDirectory(self, "选择固化输出目录")
+            if not out_dir:
+                return
+            result = export_fixation(params, out_dir)
+            self.log("💾 固化产物已导出到: %s" % result["dir"])
+            self.log("   isp_param_custom.c + tuned_params.json + fixation_guide.md")
+            self.log("   按 fixation_guide.md 操作: 修改 SDK → 重编 → 烧录 = 断电不丢")
+        except Exception as e:
+            self.log("❌ 固化导出失败: %s" % e)
 
     # ================= 退出 =================
     def closeEvent(self, ev):
