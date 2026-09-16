@@ -22,6 +22,9 @@ if ROOT not in sys.path:
 
 import cv2
 import re
+import json
+import glob
+import shutil
 import time
 import subprocess
 import numpy as np
@@ -39,26 +42,77 @@ from autosp.platform.txw_fixation import export_fixation
 GREEN, ACCENT, MUTED = "#2F7D5B", "#D98E2B", "#8FA396"
 
 
-def list_cameras():
-    """枚举摄像头: [(显示名, cv2索引)]。
-    用 ffmpeg -list_devices 拿 DirectShow 设备名(顺序即 cv2 索引)。
-    兼容新旧 ffmpeg 输出格式; 失败则探测索引 0..4 兜底。"""
+def _find_ffmpeg():
+    """定位 ffmpeg: PATH 优先, 其次 winget 安装目录(启动环境 PATH 可能未刷新)。"""
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return [exe]
+    cands = []
+    for pat in (os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\*\ffmpeg*\bin\ffmpeg.exe"),
+                os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe"),
+                r"C:\ffmpeg\bin\ffmpeg.exe", r"D:\ffmpeg\bin\ffmpeg.exe"):
+        cands += glob.glob(pat)
+    return cands
+
+
+def _cams_by_ffmpeg():
+    """ffmpeg -list_devices: 顺序即 cv2 CAP_DSHOW 索引序(权威)。
+    板卡半死时 DirectShow 枚举会变慢, 用 25s 超时+重试一次。"""
+    for exe in _find_ffmpeg():
+        for _attempt in range(2):
+            try:
+                r = subprocess.run(
+                    [exe, "-hide_banner", "-list_devices", "true",
+                     "-f", "dshow", "-i", "dummy"],
+                    capture_output=True, text=True, timeout=25)
+                out = r.stderr
+                # 新版 ffmpeg: [in#0 @ ...] "NAME" (video)；旧版: 分节头 + "NAME"
+                names = re.findall(r'"([^"]+)"\s+\(video\)', out)
+                if not names and "DirectShow video devices" in out:
+                    vsec = out.split("DirectShow video devices", 1)[1] \
+                               .split("DirectShow audio devices", 1)[0]
+                    names = re.findall(r'"([^"]+)"', vsec)[::2]
+                if names:
+                    return [(n, i) for i, n in enumerate(names)]
+                break  # ffmpeg 可用但没解析出设备, 不再重试该 exe
+            except subprocess.TimeoutExpired:
+                continue  # 枚举超时(UVC 设备无响应), 重试一次
+            except OSError:
+                break     # 该路径不可执行, 换下一个
+    return None
+
+
+def _cams_by_wmi():
+    """无 ffmpeg 时的兜底: WMI 取设备名, 按实例路径中的枚举序号排序对齐 cv2 索引。
+    实例号随 USB 枚举顺序递增, 与 DirectShow 设备序一致(经验规则)。"""
     try:
         r = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-list_devices", "true",
-             "-f", "dshow", "-i", "dummy"],
-            capture_output=True, text=True, timeout=15)
-        out = r.stderr
-        # 新版 ffmpeg: [in#0 @ ...] "NAME" (video)；旧版: 分节头 + "NAME"
-        names = re.findall(r'"([^"]+)"\s+\(video\)', out)
-        if not names and "DirectShow video devices" in out:
-            vsec = out.split("DirectShow video devices", 1)[1] \
-                       .split("DirectShow audio devices", 1)[0]
-            names = re.findall(r'"([^"]+)"', vsec)[::2]
-        if names:
-            return [(n, i) for i, n in enumerate(names)]
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_PnPEntity -Filter \"PNPClass='Camera'\""
+             " | Select-Object Name,DeviceID | ConvertTo-Json"],
+            capture_output=True, text=True, timeout=20)
+        items = json.loads(r.stdout or "null") or []
+        if isinstance(items, dict):
+            items = [items]
+        def inst_no(it):
+            m = re.search(r"\\(\d+)&", it.get("DeviceID", ""))
+            return int(m.group(1)) if m else 0
+        items.sort(key=inst_no)
+        names = [it["Name"] for it in items if it.get("Name")]
+        return [(n, i) for i, n in enumerate(names)] if names else None
     except Exception:
-        pass
+        return None
+
+
+def list_cameras():
+    """枚举摄像头: [(显示名, cv2索引)]。
+    依次尝试 ffmpeg(顺序权威) → WMI → 索引探测兜底。"""
+    cams = _cams_by_ffmpeg()
+    if cams is not None:
+        return cams
+    cams = _cams_by_wmi()
+    if cams is not None:
+        return cams
     cams = []
     for i in range(5):
         cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
@@ -381,6 +435,7 @@ class MainWindow(QMainWindow):
             pf = self._pf()
             jpg = pf.proto.get_img()
             img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+            self._stream_err = 0
             if img is None:
                 return
             rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -394,8 +449,12 @@ class MainWindow(QMainWindow):
                 fps = self._stream_n / (time.time() - self._stream_t0)
                 self.log("… 连拍 %d 帧, 平均 %.1f fps" % (self._stream_n, fps))
         except Exception as e:
+            self._stream_err = getattr(self, "_stream_err", 0) + 1
+            if self._stream_err < 3:
+                return  # 偶发单帧失败, 容忍继续
             self.stream_stop()
-            self.log("❌ 连拍中断: %s" % e)
+            self.log("❌ 连拍中断(连续 %d 次失败): %s" % (self._stream_err, e))
+            self.log("💡 若反复失败: 板子可能处于半截传输状态, 拔插 USB 后点「连接」重试")
 
     def _on_frame(self):
         if self.cap is None:
@@ -438,6 +497,8 @@ class MainWindow(QMainWindow):
                 w, h, len(jpg), dt, path, img.mean()))
         except Exception as e:
             self.log("❌ GET_IMG 失败: %s" % e)
+            if "包头" in str(e) or "超时" in str(e) or "CRC" in str(e):
+                self.log("💡 板子可能卡在半截传输状态: 拔插 USB, 等串口重新出现后再点「连接」")
 
     # ================= 参数固化 =================
     def fixate_params(self):
