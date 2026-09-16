@@ -42,6 +42,14 @@ class TunningProtocol:
     def open(self, port, baud=115200, timeout=3.0):
         import serial  # pip install pyserial
         self.ser = serial.Serial(port, baud, timeout=timeout)
+        # 排空在途残留: 上一会话中断时固件可能还在发送(75KB@115200≈7s),
+        # 读到 0.2s 静默或 10s 上限为止, 否则残留帧头会破坏首条命令解析
+        self.ser.timeout = 0.2
+        t0 = time.time()
+        while time.time() - t0 < 10.0:
+            if not self.ser.read(8192):
+                break
+        self.ser.timeout = timeout
         return self.ser.is_open
 
     def close(self):

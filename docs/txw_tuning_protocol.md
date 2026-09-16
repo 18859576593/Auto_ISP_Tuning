@@ -93,3 +93,10 @@ CONFIG_SRAM_PARAM(106) 可在线写 SRAM 参数组（在线调优的落点），
 3. **data_crc(h[4]) 语义未定**: 与重组数据 CRC 不匹配 → 降级为告警, 以 JPEG 魔数兜底
 4. **GET_VERSION 固件未实现**: 命令落入 default 分支返回 12 字节默认 ACK → 链路测试改用写参 ACK(ping)
 5. **残留字节污染**: 上一命令未读完的字节会破坏下一条的包头解析 → **每条命令发送前必须 reset_input_buffer()**
+
+### UVC 预览通路实测(2026-09-16 追加)
+- 调参固件(CUSTOMER_ID=4)下 **UVC 视频通路不喂数据**: 设备正常枚举、帧率正常,
+  但载荷全零(min=max=0, 纯黑), 且与 AE/ISP 参数完全无关(目标180时 GET_IMG 均值209, UVC 仍 0)
+- GET_IMG 走调参协议 JPEG msi, 是 ISP 处理后的真实输出; **实测吞吐 ~158ms/帧 ≈ 6.3fps**
+  (CDC 波特率为虚标, 实际 USB 速率) → 串口连拍可作准实时预览
+- UVC 若需启用, 疑似需官方工具经 libusb 发送厂商控制传输初始化(exe 内嵌 libusb)——待逆向

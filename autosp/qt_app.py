@@ -21,6 +21,10 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 import cv2
+import re
+import time
+import subprocess
+import numpy as np
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -32,6 +36,35 @@ from PySide6.QtWidgets import (
 from autosp.platform.txw import TXW828Platform
 
 GREEN, ACCENT, MUTED = "#2F7D5B", "#D98E2B", "#8FA396"
+
+
+def list_cameras():
+    """枚举摄像头: [(显示名, cv2索引)]。
+    用 ffmpeg -list_devices 拿 DirectShow 设备名(顺序即 cv2 索引)。
+    兼容新旧 ffmpeg 输出格式; 失败则探测索引 0..4 兜底。"""
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-list_devices", "true",
+             "-f", "dshow", "-i", "dummy"],
+            capture_output=True, text=True, timeout=15)
+        out = r.stderr
+        # 新版 ffmpeg: [in#0 @ ...] "NAME" (video)；旧版: 分节头 + "NAME"
+        names = re.findall(r'"([^"]+)"\s+\(video\)', out)
+        if not names and "DirectShow video devices" in out:
+            vsec = out.split("DirectShow video devices", 1)[1] \
+                       .split("DirectShow audio devices", 1)[0]
+            names = re.findall(r'"([^"]+)"', vsec)[::2]
+        if names:
+            return [(n, i) for i, n in enumerate(names)]
+    except Exception:
+        pass
+    cams = []
+    for i in range(5):
+        cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            cams.append(("Camera %d" % i, i))
+        cap.release()
+    return cams
 
 STYLE = """
 QMainWindow, QWidget { background: #16261f; color: #e8efe9;
@@ -60,8 +93,12 @@ class MainWindow(QMainWindow):
         self.cap = None           # UVC 摄像头
         self._defaults = {}       # 参数表初始值(用于识别改动)
         self._build_ui()
-        self._timer = QTimer(self, interval=66, timeout=self._on_frame)
+        self._timer = QTimer(self, interval=66, timeout=self._on_frame)          # UVC
+        self._stream_timer = QTimer(self, interval=250, timeout=self._on_stream) # 串口连拍
+        self._stream_n = 0
+        self._stream_t0 = 0.0
         self.refresh_ports()
+        self.refresh_cameras()
 
     # ================= UI =================
     def _build_ui(self):
@@ -99,21 +136,26 @@ class MainWindow(QMainWindow):
         gb_prev = QGroupBox("实时预览 (UVC) + 串口抓图")
         v2 = QVBoxLayout(gb_prev)
         row3 = QHBoxLayout()
-        self.edit_cam = QLineEdit("0")
-        self.edit_cam.setFixedWidth(50)
-        lbl_cam = QLabel("摄像头")
+        self.combo_cam = QComboBox()
+        self.combo_cam.setMinimumWidth(220)
+        btn_cam_refresh = QPushButton("刷新")
+        btn_cam_refresh.clicked.connect(self.refresh_cameras)
         self.btn_prev = QPushButton("▶ 预览")
         self.btn_prev.clicked.connect(self.preview_start)
         self.btn_stop = QPushButton("■ 停止")
         self.btn_stop.clicked.connect(self.preview_stop)
         self.btn_capture = QPushButton("📷 GET_IMG 抓图")
         self.btn_capture.clicked.connect(self.capture_still)
-        row3.addWidget(lbl_cam)
-        row3.addWidget(self.edit_cam)
+        self.btn_stream = QPushButton("🔄 串口连拍 (~6fps)")
+        self.btn_stream.clicked.connect(self.stream_toggle)
+        self.btn_stream.setToolTip("走调参协议连续抓图, 显示 ISP 处理后真实画面(与 GET_IMG 同源)。"
+                                   "调参固件的 UVC 通路不喂流(实测全黑), 板子画面以此为准。")
+        row3.addWidget(self.combo_cam, 1)
+        row3.addWidget(btn_cam_refresh)
         row3.addWidget(self.btn_prev)
         row3.addWidget(self.btn_stop)
-        row3.addStretch(1)
         row3.addWidget(self.btn_capture)
+        row3.addWidget(self.btn_stream)
         self.lbl_video = QLabel("预览区")
         self.lbl_video.setObjectName("video")
         self.lbl_video.setAlignment(Qt.AlignCenter)
@@ -254,12 +296,34 @@ class MainWindow(QMainWindow):
             self.log("❌ 应用失败: %s" % e)
 
     # ================= 预览/抓图 =================
+    def refresh_cameras(self):
+        """枚举并填充摄像头下拉框, 自动选中 RTT 板载摄像头(无则第一个)。"""
+        was_running = self._timer.isActive()
+        if was_running:
+            self.preview_stop()
+        cams = list_cameras()
+        self.combo_cam.clear()
+        for name, idx in cams:
+            self.combo_cam.addItem(name, idx)
+        # 自动选择: 优先 RTT(板载), 否则第一个
+        sel = 0
+        for i, (name, _idx) in enumerate(cams):
+            if "RTT" in name.upper():
+                sel = i
+                break
+        if cams:
+            self.combo_cam.setCurrentIndex(sel)
+            self.log("发现 %d 个摄像头, 已选中: %s" % (len(cams), cams[sel][0]))
+        else:
+            self.log("未发现摄像头")
+
     def preview_start(self):
-        try:
-            idx = int(self.edit_cam.text())
-        except ValueError:
-            self.log("摄像头索引须为数字")
+        if self.combo_cam.count() == 0:
+            self.log("❌ 无摄像头可选")
             return
+        self.stream_stop()           # UVC 与串口连拍互斥
+        idx = self.combo_cam.currentData()
+        name = self.combo_cam.currentText()
         if self.cap is not None:
             self.cap.release()
         self.cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
@@ -268,10 +332,10 @@ class MainWindow(QMainWindow):
             self.cap = cv2.VideoCapture(idx)
         if not self.cap.isOpened():
             self.cap = None
-            self.log("❌ 打不开摄像头 %d" % idx)
+            self.log("❌ 打不开摄像头: %s" % name)
             return
         self._timer.start()
-        self.log("▶ 预览已启动 (摄像头 %d)" % idx)
+        self.log("▶ 预览已启动: %s (索引 %d)" % (name, idx))
 
     def preview_stop(self):
         self._timer.stop()
@@ -280,6 +344,52 @@ class MainWindow(QMainWindow):
             self.cap = None
         self.lbl_video.setText("预览区")
         self.log("■ 预览已停止")
+
+    # ================= 串口连拍预览 =================
+    def stream_toggle(self):
+        if self._stream_timer.isActive():
+            self.stream_stop()
+        else:
+            self.stream_start()
+
+    def stream_start(self):
+        try:
+            self._pf()   # 无连接则抛异常
+        except Exception as e:
+            self.log("❌ %s" % e)
+            return
+        self.preview_stop()          # UVC 与串口连拍互斥
+        self._stream_n = 0
+        self._stream_t0 = time.time()
+        self.btn_stream.setText("⏸ 停止连拍")
+        self._stream_timer.start()
+        self.log("🔄 串口连拍已启动 (GET_IMG, ~6fps, ISP 处理后画面)")
+
+    def stream_stop(self):
+        self._stream_timer.stop()
+        self.btn_stream.setText("🔄 串口连拍 (~6fps)")
+        self.log("■ 串口连拍已停止")
+
+    def _on_stream(self):
+        try:
+            pf = self._pf()
+            jpg = pf.proto.get_img()
+            img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                return
+            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb.shape
+            qimg = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
+            self.lbl_video.setPixmap(QPixmap.fromImage(qimg).scaled(
+                self.lbl_video.width(), self.lbl_video.height(),
+                Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self._stream_n += 1
+            if self._stream_n % 30 == 0:
+                fps = self._stream_n / (time.time() - self._stream_t0)
+                self.log("… 连拍 %d 帧, 平均 %.1f fps" % (self._stream_n, fps))
+        except Exception as e:
+            self.stream_stop()
+            self.log("❌ 连拍中断: %s" % e)
 
     def _on_frame(self):
         if self.cap is None:
@@ -326,6 +436,7 @@ class MainWindow(QMainWindow):
     # ================= 退出 =================
     def closeEvent(self, ev):
         self._timer.stop()
+        self._stream_timer.stop()
         if self.cap is not None:
             self.cap.release()
         if self.pf and self.pf.proto.ser:
