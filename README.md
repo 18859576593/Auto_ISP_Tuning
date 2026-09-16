@@ -2,7 +2,7 @@
 
 > 目标：把"调参指南 + 客观指标 + 优化搜索 + LLM/VLM 编排"组合成可复用的自动调参工具。
 > 首个平台：泰芯微 TXW828（在线协议调参）；框架先用离线仿真平台验证（Phase 1 已跑通）。
-> 调研依据：`D:\ISP IQ Tuning\isp tuning\泰芯微平台资料\自动ISP调优调研与方案.md`
+
 
 ## 一、架构（四层 ↔ 四阶段）
 
@@ -20,8 +20,6 @@ L1 platform/ 适配层   base 抽象接口 + offline_sim(已跑通) + txw828/hai
 ```
 autosp/            框架包（core/platform/eval/search/agent 五个子包）
 platforms/         每平台一份: param_schema.json(参数+作用+影响描述) + guide.json(调参顺序+规则)
-  txw828/            泰芯微（来自 SDK IQ 参数模型 + 笔记 §3.4）
-  hailo15h/          Hailo-15H（来自 iq_settings/3aconfig 结构）
   offline_sim/       fast-OpenISP 仿真平台
 scripts/demo_phase1.py   Phase1 演示入口
 refs/              参考项目（浅克隆）: fast-OpenISP / ISP-AutoTuning / Infinite-ISP_TuningTool
@@ -32,9 +30,9 @@ data/runs/         运行产物: history.jsonl + snapshots/ + best_params.json +
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| **Phase 0** 参数/指南结构化 | param_schema.json + guide.json 格式已定，TXW/Hailo 示例已建；待 FAE 指南到位后补全字段 | ✅ 格式与示例 |
+| **Phase 0** 参数/指南结构化 | param_schema.json + guide.json 格式已定，示例已建；待 FAE 指南到位后补全字段 | ✅ 格式与示例 |
 | **Phase 1** 离线闭环 | offline_sim 平台 + PSNR/SSIM 目标 + 坐标下降，**已跑通**：12 轮 120s，PSNR 32.67→33.56，SSIM 0.972→0.976，产出 best_params + 快照 + 历史 | ✅ 跑通 |
-| **Phase 2** 实机闭环 | TXW828 适配器骨架（USB 协议 TODO 清单在 txw.py 文件头）；Hailo 骨架（离线型平台，两段式） | 🚧 骨架 |
+| **Phase 2** 实机闭环 | 适配器骨架（USB 协议 TODO 清单在 txw.py 文件头）；Hailo 骨架（离线型平台，两段式） | 🚧 骨架 |
 | **Phase 3** LLM 编排 | **LLM 已接入**（OpenAI 兼容客户端，mock 服务端到端验证通过）：LLMPlanner 决策+失败自动回退规则版；VLMJudge A/B 对比 | ✅ 已接入(待真实 API) |
 
 ## 三点五、大模型接入（Phase 3）
